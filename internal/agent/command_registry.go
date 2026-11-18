@@ -23,7 +23,23 @@ const (
 	cmdImmediate cmdPolicy = iota
 
 	// cmdIdle runs synchronously but is rejected when a task is
-	// in progress (e.g. :model_set changes state the task reads).
+	// in progress.
+	//
+	// What earns this policy, and nothing less: the task goroutine reads what the
+	// command writes, and a running step cannot stop reading it. A model switch
+	// replaces the provider/agent pair the step is executing inside, so there is
+	// nothing coherent to hand that step mid-flight.
+	//
+	// Leaving this policy therefore means first making the field race-free. Two
+	// settings commands did exactly that — :reasoning_level_set and
+	// :video_config now write an atomic and a swapped snapshot (see
+	// modelService) — because their effect, "from the next request on", is
+	// well defined while a task runs.
+	//
+	// A command that merely has nothing to act on while a task runs does not
+	// belong here either: it answers about its own precondition instead of
+	// claiming the session is busy. The MCP authorization answers
+	// (:mcp_confirm, :mcp_decline) were that case and are immediate.
 	cmdIdle
 )
 
@@ -94,7 +110,7 @@ var commandDefs = []command{
 		func(s *Session, _ context.Context, _ string) (any, error) { return s.handleModelLoad() }},
 	{commands.CommandNameModelSync, cmdIdle,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleModelSync(args) }},
-	{commands.CommandNameReasoningLevelSet, cmdIdle,
+	{commands.CommandNameReasoningLevelSet, cmdImmediate,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleReasoningLevelSet(args) }},
 	{commands.CommandNameThemeSet, cmdImmediate,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleThemeSet(args) }},
@@ -104,11 +120,11 @@ var commandDefs = []command{
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleToolDeclineCmd(args) }},
 	{commands.CommandNameFork, cmdImmediate,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleFork(args) }},
-	{commands.CommandNameVideoConfig, cmdIdle,
+	{commands.CommandNameVideoConfig, cmdImmediate,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleVideoConfig(args) }},
-	{commands.CommandNameMCPConfirm, cmdIdle,
+	{commands.CommandNameMCPConfirm, cmdImmediate,
 		func(s *Session, ctx context.Context, args string) (any, error) { return s.handleMCPConfirm(ctx, args) }},
-	{commands.CommandNameMCPDecline, cmdIdle,
+	{commands.CommandNameMCPDecline, cmdImmediate,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleMCPDecline(args) }},
 	{commands.CommandNameMCPSkip, cmdImmediate,
 		func(s *Session, _ context.Context, _ string) (any, error) { return s.handleMCPSkip() }},

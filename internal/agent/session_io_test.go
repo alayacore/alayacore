@@ -14,6 +14,7 @@ import (
 	"github.com/alayacore/alayacore/internal/wiretest"
 
 	"github.com/alayacore/alayacore/internal/commands"
+	"github.com/alayacore/alayacore/internal/config"
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/wire"
@@ -795,13 +796,94 @@ func runCI(t *testing.T, s *Session, name, args string) string {
 	return strings.Join(output.Messages, "")
 }
 
-// A command that declares arguments keeps its exact count: a third token on
-// :video_config used to be ignored, which turns a typo into a setting.
-func TestVideoConfigRejectsExtraTokens(t *testing.T) {
+// newSettingsSession is a session with the services the settings commands touch
+// and MCP in its "not configured" state. newMCPService(nil) rather than a nil
+// field: a command must reach its own refusal, not a nil dereference.
+func newSettingsSession() *Session {
 	s := &Session{sessionConfig: sessionConfig{
 		modelService:  newModelService(newModelManager(""), newRuntimeManager("")),
 		SessionConfig: SessionConfig{Input: &nopInput{}},
 	}}
+	s.mcpService = newMCPService(nil)
+	return s
+}
+
+// The four commands a running task may not be told to wait for.
+//
+// :reasoning_level_set and :video_config change a default that the task's next
+// request, or the next video it stamps, picks up — a well-defined thing to ask
+// mid-task, and the same "from now on" the commands were documented to have.
+// :mcp_confirm and :mcp_decline hand an answer to the goroutine waiting for it,
+// and there is never a pending authorization while a task runs (Ready is what
+// lets a task start; "init in progress" is what these need), so the busy gate
+// could only replace an accurate refusal with a less accurate one.
+//
+// What the test pins is the STATE_BUSY that must not appear: with the gate in
+// place, all four were refused for a reason that had nothing to do with why they
+// could not run.
+func TestSettingsAndMCPCommandsAreNotRefusedWhileBusy(t *testing.T) {
+	t.Run("reasoning_level_set applies", func(t *testing.T) {
+		s := newSettingsSession()
+		s.activeTask = &taskHandle{}
+
+		joined := runCI(t, s, commands.CommandNameReasoningLevelSet, "2")
+		if strings.Contains(joined, `"code":"STATE_BUSY"`) {
+			t.Fatalf(":r was refused while a task runs: %s", joined)
+		}
+		if got := s.modelService.ReasoningLevel(); got != config.ReasoningLevelMax {
+			t.Errorf("reasoning level = %d, want %d — the command takes effect at once", got, config.ReasoningLevelMax)
+		}
+		if !strings.Contains(joined, `"level":2`) {
+			t.Errorf("the CO does not report the new level: %s", joined)
+		}
+	})
+
+	t.Run("video_config applies", func(t *testing.T) {
+		s := newSettingsSession()
+		s.activeTask = &taskHandle{}
+
+		joined := runCI(t, s, commands.CommandNameVideoConfig, "5 1")
+		if strings.Contains(joined, `"code":"STATE_BUSY"`) {
+			t.Fatalf(":video_config was refused while a task runs: %s", joined)
+		}
+		if v := s.modelService.VideoConfig(); v.FPS != 5 || v.Res != 1 {
+			t.Errorf("video default = %d/%d, want 5/1 — the command takes effect at once", v.FPS, v.Res)
+		}
+	})
+
+	// No MCP servers configured: the refusal must be about MCP, not about the
+	// task being in flight.
+	t.Run("mcp_confirm answers about MCP, not about being busy", func(t *testing.T) {
+		s := newSettingsSession()
+		s.activeTask = &taskHandle{}
+
+		joined := runCI(t, s, commands.CommandNameMCPConfirm, "github code http://127.0.0.1/cb")
+		if strings.Contains(joined, `"code":"STATE_BUSY"`) {
+			t.Fatalf(":mcp_confirm was refused as busy: %s", joined)
+		}
+		if !strings.Contains(joined, `"code":"CONFIG_MISSING"`) {
+			t.Errorf("want CONFIG_MISSING (no MCP servers configured), got: %s", joined)
+		}
+	})
+
+	t.Run("mcp_decline answers about MCP, not about being busy", func(t *testing.T) {
+		s := newSettingsSession()
+		s.activeTask = &taskHandle{}
+
+		joined := runCI(t, s, commands.CommandNameMCPDecline, "github")
+		if strings.Contains(joined, `"code":"STATE_BUSY"`) {
+			t.Fatalf(":mcp_decline was refused as busy: %s", joined)
+		}
+		if !strings.Contains(joined, `"code":"CONFIG_MISSING"`) {
+			t.Errorf("want CONFIG_MISSING (no MCP servers configured), got: %s", joined)
+		}
+	})
+}
+
+// A command that declares arguments keeps its exact count: a third token on
+// :video_config used to be ignored, which turns a typo into a setting.
+func TestVideoConfigRejectsExtraTokens(t *testing.T) {
+	s := newSettingsSession()
 
 	if joined := runCI(t, s, commands.CommandNameVideoConfig, "5 1 junk"); !strings.Contains(joined, `"code":"REQUEST_INVALID_ARGS"`) {
 		t.Errorf("a third token should be REFUSED, got: %s", joined)

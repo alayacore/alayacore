@@ -137,7 +137,6 @@ func (m *blockingProvider) StreamMessages(ctx context.Context, _ []llm.ContentPa
 	}, nil
 }
 
-func (m *blockingProvider) SetReasoningLevel(_ int)                       {}
 func (m *blockingProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 
 // syncOutput is a concurrency-safe output capture for tests where the
@@ -268,7 +267,6 @@ func (m *toolThenBlockProvider) StreamMessages(ctx context.Context, _ []llm.Cont
 	}, nil
 }
 
-func (m *toolThenBlockProvider) SetReasoningLevel(_ int)                       {}
 func (m *toolThenBlockProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 
 // TestCancelTask_KeepsExecutedToolResult verifies the end-to-end salvage

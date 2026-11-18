@@ -1464,6 +1464,7 @@ func TestOpenAIReasoningFieldAppliesToSendSide(t *testing.T) {
 			)
 
 			provider, err := providers.NewOpenAI(providers.BaseConfig{
+				ReasoningLevel: llm.NewReasoningLevel(config.ReasoningLevelNormal),
 				APIKey:         "test-key",
 				BaseURL:        server.URL,
 				ReasoningField: tt.field,
@@ -1471,7 +1472,6 @@ func TestOpenAIReasoningFieldAppliesToSendSide(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			provider.SetReasoningLevel(config.ReasoningLevelNormal)
 
 			// A prior assistant message that reasoned, then a fresh user message.
 			messages := append(
@@ -1520,6 +1520,7 @@ func TestOpenAIReasoningKeyCarriesOnlyReasoningTheRecordHas(t *testing.T) {
 				"data: [DONE]\n\n",
 		)
 		provider, err := providers.NewOpenAI(providers.BaseConfig{
+			ReasoningLevel: llm.NewReasoningLevel(config.ReasoningLevelNormal),
 			APIKey:         "test-key",
 			BaseURL:        server.URL,
 			ReasoningField: "reasoning",
@@ -1527,7 +1528,6 @@ func TestOpenAIReasoningKeyCarriesOnlyReasoningTheRecordHas(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		provider.SetReasoningLevel(config.ReasoningLevelNormal)
 
 		events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
 		if err != nil {
@@ -2134,13 +2134,13 @@ func TestAnthropicNoReasoningConfig(t *testing.T) {
 
 	for _, level := range []int{0, 1, 2} {
 		provider, err := providers.NewAnthropic(providers.BaseConfig{
-			APIKey:  "test-key",
-			BaseURL: server.URL,
+			ReasoningLevel: llm.NewReasoningLevel(level),
+			APIKey:         "test-key",
+			BaseURL:        server.URL,
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
-		provider.SetReasoningLevel(level)
 		// Intentionally no SetReasoningConfigs.
 
 		messages := testMsg(llm.RoleUser, &llm.TextPart{Text: "Hi"})
@@ -2173,8 +2173,9 @@ func TestAnthropicReasoningConfigMerged(t *testing.T) {
 	)
 
 	provider, err := providers.NewAnthropic(providers.BaseConfig{
-		APIKey:  "test-key",
-		BaseURL: server.URL,
+		ReasoningLevel: llm.NewReasoningLevel(1),
+		APIKey:         "test-key",
+		BaseURL:        server.URL,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -2184,7 +2185,6 @@ func TestAnthropicReasoningConfigMerged(t *testing.T) {
 		1: json.RawMessage(`{"thinking":{"type":"enabled"},"output_config":{"effort":"high"}}`),
 		2: json.RawMessage(`{"thinking":{"type":"enabled"},"output_config":{"effort":"max"}}`),
 	})
-	provider.SetReasoningLevel(1)
 
 	messages := testMsg(llm.RoleUser, &llm.TextPart{Text: "Hi"})
 	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
@@ -2221,8 +2221,9 @@ func TestAnthropicReasoningConfigMax(t *testing.T) {
 	)
 
 	provider, err := providers.NewAnthropic(providers.BaseConfig{
-		APIKey:  "test-key",
-		BaseURL: server.URL,
+		ReasoningLevel: llm.NewReasoningLevel(2),
+		APIKey:         "test-key",
+		BaseURL:        server.URL,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -2230,7 +2231,6 @@ func TestAnthropicReasoningConfigMax(t *testing.T) {
 	provider.SetReasoningConfigs(map[int]json.RawMessage{
 		2: json.RawMessage(`{"thinking":{"type":"enabled"},"output_config":{"effort":"max"}}`),
 	})
-	provider.SetReasoningLevel(2)
 
 	messages := testMsg(llm.RoleUser, &llm.TextPart{Text: "Hi"})
 	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
@@ -2261,13 +2261,13 @@ func TestOpenAINoReasoningConfig(t *testing.T) {
 
 	for _, level := range []int{0, 1, 2} {
 		provider, err := providers.NewOpenAI(providers.BaseConfig{
-			APIKey:  "test-key",
-			BaseURL: server.URL,
+			ReasoningLevel: llm.NewReasoningLevel(level),
+			APIKey:         "test-key",
+			BaseURL:        server.URL,
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
-		provider.SetReasoningLevel(level)
 
 		messages := testMsg(llm.RoleUser, &llm.TextPart{Text: "Hi"})
 		events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
@@ -2297,8 +2297,9 @@ func TestOpenAIReasoningConfigMerged(t *testing.T) {
 	)
 
 	provider, err := providers.NewOpenAI(providers.BaseConfig{
-		APIKey:  "test-key",
-		BaseURL: server.URL,
+		ReasoningLevel: llm.NewReasoningLevel(1),
+		APIKey:         "test-key",
+		BaseURL:        server.URL,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -2308,7 +2309,6 @@ func TestOpenAIReasoningConfigMerged(t *testing.T) {
 		1: json.RawMessage(`{"thinking":{"type":"enabled"},"reasoning_effort":"high"}`),
 		2: json.RawMessage(`{"thinking":{"type":"enabled"},"reasoning_effort":"xhigh"}`),
 	})
-	provider.SetReasoningLevel(1)
 
 	messages := testMsg(llm.RoleUser, &llm.TextPart{Text: "Hi"})
 	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
@@ -2340,8 +2340,9 @@ func TestOpenAIReasoningConfigXHigh(t *testing.T) {
 	)
 
 	provider, err := providers.NewOpenAI(providers.BaseConfig{
-		APIKey:  "test-key",
-		BaseURL: server.URL,
+		ReasoningLevel: llm.NewReasoningLevel(2),
+		APIKey:         "test-key",
+		BaseURL:        server.URL,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -2349,7 +2350,6 @@ func TestOpenAIReasoningConfigXHigh(t *testing.T) {
 	provider.SetReasoningConfigs(map[int]json.RawMessage{
 		2: json.RawMessage(`{"thinking":{"type":"enabled"},"reasoning_effort":"xhigh"}`),
 	})
-	provider.SetReasoningLevel(2)
 
 	messages := testMsg(llm.RoleUser, &llm.TextPart{Text: "Hi"})
 	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
@@ -2377,8 +2377,9 @@ func TestReasoningConfigPassesThroughUnknownFields(t *testing.T) {
 	)
 
 	provider, err := providers.NewOpenAI(providers.BaseConfig{
-		APIKey:  "test-key",
-		BaseURL: server.URL,
+		ReasoningLevel: llm.NewReasoningLevel(1),
+		APIKey:         "test-key",
+		BaseURL:        server.URL,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -2386,7 +2387,6 @@ func TestReasoningConfigPassesThroughUnknownFields(t *testing.T) {
 	provider.SetReasoningConfigs(map[int]json.RawMessage{
 		1: json.RawMessage(`{"thinking":{"type":"enabled"},"reasoning_effort":"high","custom_provider_field":{"foo":"bar"}}`),
 	})
-	provider.SetReasoningLevel(1)
 
 	messages := testMsg(llm.RoleUser, &llm.TextPart{Text: "Hi"})
 	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
@@ -2416,8 +2416,9 @@ func TestSetReasoningConfigsClearsPrior(t *testing.T) {
 	)
 
 	provider, err := providers.NewOpenAI(providers.BaseConfig{
-		APIKey:  "test-key",
-		BaseURL: server.URL,
+		ReasoningLevel: llm.NewReasoningLevel(1),
+		APIKey:         "test-key",
+		BaseURL:        server.URL,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -2430,7 +2431,6 @@ func TestSetReasoningConfigsClearsPrior(t *testing.T) {
 	provider.SetReasoningConfigs(map[int]json.RawMessage{
 		1: json.RawMessage(`{"reasoning_effort":"medium"}`),
 	})
-	provider.SetReasoningLevel(1)
 
 	messages := testMsg(llm.RoleUser, &llm.TextPart{Text: "Hi"})
 	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
@@ -2456,8 +2456,9 @@ func TestSetReasoningConfigsDropsEmptyEntries(t *testing.T) {
 	)
 
 	provider, err := providers.NewOpenAI(providers.BaseConfig{
-		APIKey:  "test-key",
-		BaseURL: server.URL,
+		ReasoningLevel: llm.NewReasoningLevel(1),
+		APIKey:         "test-key",
+		BaseURL:        server.URL,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -2467,7 +2468,6 @@ func TestSetReasoningConfigsDropsEmptyEntries(t *testing.T) {
 		1: json.RawMessage(`{}`), // present-but-empty: also skipped via len() check
 		2: json.RawMessage(`{"reasoning_effort":"xhigh"}`),
 	})
-	provider.SetReasoningLevel(1)
 
 	messages := testMsg(llm.RoleUser, &llm.TextPart{Text: "Hi"})
 	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")

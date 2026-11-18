@@ -26,6 +26,11 @@ type ProviderConfig struct {
 	// level".
 	ReasoningConfigs map[int]json.RawMessage
 
+	// ReasoningLevel is the level object the provider reads for each request,
+	// passed through so the session and its provider share one value rather than
+	// holding two (see llm.ReasoningLevel).
+	ReasoningLevel *llm.ReasoningLevel
+
 	// ReasoningField is the response-side delta key carrying reasoning text
 	// (model.conf `reasoning_field`). Empty means the provider default,
 	// providers.DefaultReasoningField.
@@ -46,6 +51,7 @@ func NewProvider(config ProviderConfig) (llm.Provider, error) {
 		Model:            config.Model,
 		HTTPClient:       config.HTTPClient,
 		MaxTokens:        config.MaxTokens,
+		ReasoningLevel:   config.ReasoningLevel,
 		ReasoningConfigs: config.ReasoningConfigs,
 		ReasoningField:   config.ReasoningField,
 		SerialToolCalls:  config.SerialToolCalls,

@@ -163,7 +163,8 @@ func TestSessionFileOmitsHistoryIDAndRoundTripsTime(t *testing.T) {
 // the default, and its serialization is a pure function of the part.
 func TestVideoSettingsSnapshotPerPart(t *testing.T) {
 	s := newSaveSession()
-	s.modelService = &modelService{videoFPS: 5, videoRes: 1}
+	s.modelService = &modelService{}
+	s.modelService.SetVideoConfig(5, 1)
 
 	plain := &llm.VideoPart{URI: "data:video/mp4;base64,AAAA"}
 	s.applyVideoDefault(plain)
@@ -179,7 +180,7 @@ func TestVideoSettingsSnapshotPerPart(t *testing.T) {
 
 	// Changing the default does not touch a part already stamped: this is the
 	// property that stops :video_config from rewriting earlier messages.
-	s.modelService.videoFPS, s.modelService.videoRes = 2, 0
+	s.modelService.SetVideoConfig(2, 0)
 	_, body, err := contentPartJSON(explicit, "")
 	if err != nil {
 		t.Fatalf("serialize: %v", err)

@@ -200,12 +200,6 @@ func NewAnthropic(cfg BaseConfig) (*AnthropicProvider, error) {
 	return p, nil
 }
 
-// SetReasoningLevel sets the reasoning level for Anthropic.
-// 0=off, 1=normal, 2=max.
-func (p *AnthropicProvider) SetReasoningLevel(level int) {
-	p.reasoningLevel = level
-}
-
 // StreamMessages streams messages from Anthropic
 func (p *AnthropicProvider) StreamMessages(
 	ctx context.Context,
@@ -278,8 +272,8 @@ func (p *AnthropicProvider) StreamMessages(
 }
 
 // SetReasoningConfigs stores per-level provider wire-format JSON that
-// is merged into the request body at the level returned by
-// SetReasoningLevel. nil/empty entries are dropped so an unset level
+// is merged into the request body at the level BaseConfig.ReasoningLevel
+// currently holds. nil/empty entries are dropped so an unset level
 // produces no fields in the body.
 func (p *AnthropicProvider) SetReasoningConfigs(configs map[int]json.RawMessage) {
 	p.reasoningConfigs = nil

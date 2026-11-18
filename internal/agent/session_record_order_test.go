@@ -26,7 +26,6 @@ func (invertedArrivalProvider) StreamMessages(_ context.Context, _ []llm.Content
 	}, nil
 }
 
-func (invertedArrivalProvider) SetReasoningLevel(_ int)                       {}
 func (invertedArrivalProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 
 // The requirement is about the session file, not the screen: whatever order the

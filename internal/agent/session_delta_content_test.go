@@ -63,7 +63,6 @@ func (textAndReasoningProvider) StreamMessages(_ context.Context, _ []llm.Conten
 	}, nil
 }
 
-func (textAndReasoningProvider) SetReasoningLevel(_ int)                       {}
 func (textAndReasoningProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 
 // TestCompleteFramesCarryContentOnlyWhenDeltasAreOff runs the same task in both

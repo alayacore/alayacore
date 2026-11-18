@@ -336,7 +336,6 @@ func (m *mockProviderDyingMidCall) StreamMessages(_ context.Context, _ []Content
 	}, nil
 }
 
-func (m *mockProviderDyingMidCall) SetReasoningLevel(_ int)                       {}
 func (m *mockProviderDyingMidCall) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 
 // A stream that fails after a call has streamed must run nothing at all. Under

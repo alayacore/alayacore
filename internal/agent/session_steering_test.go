@@ -134,7 +134,6 @@ func (p *steeringProvider) StreamMessages(ctx context.Context, history []llm.Con
 	}, nil
 }
 
-func (p *steeringProvider) SetReasoningLevel(_ int)                       {}
 func (p *steeringProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 
 // request returns the history the n-th provider call (0-based) was sent on.

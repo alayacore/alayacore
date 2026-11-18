@@ -826,6 +826,14 @@ func (s *Session) handleThemeSet(args string) (any, error) {
 //
 // These commands manage MCP server lifecycle: cancel initialization,
 // confirm an OAuth authorization code, or decline an authorization request.
+//
+// All three are immediate, and none of them needs a gate: while a task runs the
+// session is Ready, which is the same condition that makes "MCP initialization
+// is not in progress" the answer, so there is never a pending authorization to
+// act on. The initializer they hand the answer to is built for the crossing —
+// SendAuthCodeResult posts to the goroutine waiting in runOAuthForServer — so
+// the only thing a busy check added was a less accurate refusal
+// (STATE_BUSY instead of STATE_NOT_IN_PROGRESS).
 // ============================================================================
 
 // handleMCPSkip handles the :mcp_skip command.

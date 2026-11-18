@@ -72,7 +72,6 @@ func (p *parkFirstProvider) StreamMessages(ctx context.Context, _ []llm.ContentP
 	}, nil
 }
 
-func (p *parkFirstProvider) SetReasoningLevel(_ int)                       {}
 func (p *parkFirstProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 
 // TestSummarizeReportsInProgressWhileInFlight covers the runTaskSummarize

@@ -89,7 +89,6 @@ func (p *scriptedSummarizer) StreamMessages(_ context.Context, history []llm.Con
 	}, nil
 }
 
-func (p *scriptedSummarizer) SetReasoningLevel(_ int)                       {}
 func (p *scriptedSummarizer) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 
 func (p *scriptedSummarizer) calls() int {

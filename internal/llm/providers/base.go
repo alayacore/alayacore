@@ -37,6 +37,16 @@ type BaseConfig struct {
 	HTTPClient *http.Client
 	MaxTokens  int // 0 means use provider default
 
+	// ReasoningLevel is where the level that selects the reasoning_* block comes
+	// from. A session passes its own, so the level that :reasoning_level_set
+	// changes and the level a request body is built from are one value, not two
+	// copies to keep in step — see llm.ReasoningLevel.
+	//
+	// nil means this provider is on its own (a provider built outside a session,
+	// a test): setBaseConfig gives it a level of its own, so it reads level 0 —
+	// off — exactly as the zero value of the field this replaced did.
+	ReasoningLevel *llm.ReasoningLevel
+
 	// ReasoningConfigs is the user-supplied per-level provider wire-format
 	// JSON merged into the request body. Keyed by reasoning level (0=off,
 	// 1=normal, 2=max). Nil/empty entries mean "no fields added for this
@@ -75,9 +85,16 @@ type baseProvider struct {
 	client           *http.Client
 	model            string
 	maxTokens        int
-	reasoningLevel   int                     // 0=off, 1=normal, 2=max — UI display, session persistence, and which reasoning_* block is merged
 	reasoningConfigs map[int]json.RawMessage // per-level raw provider JSON merged into request body; nil entries omitted
 	reasoningField   string                  // response delta key carrying reasoning text; setBaseConfig applies the default when empty
+
+	// reasoningLevel (0=off, 1=normal, 2=max) selects which reasoning_* block
+	// mergeReasoningConfig merges. Never nil after setBaseConfig, and never a
+	// copy: the session owns the value and hands us a pointer, because
+	// :reasoning_level_set changes it while a request may be in flight. The map
+	// below needs no such care — it is written once, by the model switch that
+	// builds a whole new provider.
+	reasoningLevel *llm.ReasoningLevel
 
 	// serialToolCalls is model.conf `serial_tool_calls`, carried through without
 	// inversion. OpenAI negates it into the request field; see openai.go.
@@ -105,6 +122,12 @@ func (b *baseProvider) setBaseConfig(cfg BaseConfig, defaultModel string) {
 		b.reasoningField = DefaultReasoningField
 	}
 	b.serialToolCalls = cfg.SerialToolCalls
+	b.reasoningLevel = cfg.ReasoningLevel
+	if b.reasoningLevel == nil {
+		// No session to share with: this provider carries its own level, at the
+		// zero value (off) it would have had as a plain field.
+		b.reasoningLevel = llm.NewReasoningLevel(0)
+	}
 	if len(cfg.ReasoningConfigs) > 0 {
 		b.reasoningConfigs = make(map[int]json.RawMessage, len(cfg.ReasoningConfigs))
 		for k, v := range cfg.ReasoningConfigs {
@@ -130,7 +153,7 @@ func (b *baseProvider) setBaseConfig(cfg BaseConfig, defaultModel string) {
 // and yields no merge — keeping model.conf backward compatible: missing
 // reasoning_N fields never inject any wire fields.
 func (b *baseProvider) mergeReasoningConfig(body map[string]any) map[string]any {
-	raw, ok := b.reasoningConfigs[b.reasoningLevel]
+	raw, ok := b.reasoningConfigs[b.reasoningLevel.Get()]
 	if !ok || len(raw) == 0 {
 		return body
 	}

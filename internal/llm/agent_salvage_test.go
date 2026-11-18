@@ -20,7 +20,6 @@ func (p *salvageProvider) StreamMessages(_ context.Context, _ []ContentPart, _ [
 	return func(yield func(StreamEvent, error) bool) { p.seq(yield) }, nil
 }
 
-func (p *salvageProvider) SetReasoningLevel(_ int)                       {}
 func (p *salvageProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 
 // fastTool returns a tool that executes immediately, closes executed to

@@ -34,9 +34,12 @@ func (s *Session) saveContentToFileWithContext(path string, contents []llm.Conte
 	videoFPS := 0
 	videoRes := 0
 	if s.modelService != nil {
-		reasoningLevel = s.modelService.reasoningLevel
-		videoFPS = s.modelService.videoFPS
-		videoRes = s.modelService.videoRes
+		// Atomic and snapshot respectively: this runs on the task goroutine
+		// when a mid-task summarize backs up, while run() may be applying a
+		// :reasoning_level_set or :video_config the user sent.
+		reasoningLevel = s.modelService.ReasoningLevel()
+		video := s.modelService.VideoConfig()
+		videoFPS, videoRes = video.FPS, video.Res
 	}
 	meta := sessionMeta{
 		CreatedAt:      s.CreatedAt,

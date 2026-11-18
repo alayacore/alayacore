@@ -78,7 +78,6 @@ func (m *midTaskProvider) StreamMessages(_ context.Context, history []llm.Conten
 	}, nil
 }
 
-func (m *midTaskProvider) SetReasoningLevel(_ int)                       {}
 func (m *midTaskProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 
 func (m *midTaskProvider) summarizeCalls() int {
@@ -144,7 +143,6 @@ func (m *compactFailProvider) StreamMessages(_ context.Context, history []llm.Co
 	}, nil
 }
 
-func (m *compactFailProvider) SetReasoningLevel(_ int)                       {}
 func (m *compactFailProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 
 func (m *compactFailProvider) summarizeCalls() int {

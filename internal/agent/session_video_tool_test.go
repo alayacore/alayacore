@@ -20,10 +20,12 @@ import (
 // the whole point of binding fps/res to the part.
 func TestToolResultVideoTakesSessionDefaultAtReadTime(t *testing.T) {
 	var out bytes.Buffer
+	ms := &modelService{}
+	ms.SetVideoConfig(5, 1)
 	s := &Session{
 		sessionConfig: sessionConfig{
 			SessionConfig: SessionConfig{Output: &out},
-			modelService:  &modelService{videoFPS: 5, videoRes: 1},
+			modelService:  ms,
 		},
 		sharedState: sharedState{outputBroken: atomic.Bool{}},
 	}
@@ -40,7 +42,7 @@ func TestToolResultVideoTakesSessionDefaultAtReadTime(t *testing.T) {
 	}
 
 	// A later default change leaves the already-read video alone.
-	s.modelService.videoFPS, s.modelService.videoRes = 2, 0
+	s.modelService.SetVideoConfig(2, 0)
 	if video.FPS != 5 || video.Res != 1 {
 		t.Errorf("the video followed the default: now %d/%d, want 5/1", video.FPS, video.Res)
 	}
@@ -51,10 +53,12 @@ func TestToolResultVideoTakesSessionDefaultAtReadTime(t *testing.T) {
 // is — the default only fills a gap.
 func TestToolResultVideoWithOwnSettingsIsNotOverwritten(t *testing.T) {
 	var out bytes.Buffer
+	ms := &modelService{}
+	ms.SetVideoConfig(5, 1)
 	s := &Session{
 		sessionConfig: sessionConfig{
 			SessionConfig: SessionConfig{Output: &out},
-			modelService:  &modelService{videoFPS: 5, videoRes: 1},
+			modelService:  ms,
 		},
 		sharedState: sharedState{outputBroken: atomic.Bool{}},
 	}

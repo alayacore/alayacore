@@ -112,7 +112,29 @@ Commands fall into three categories:
 | `:fork <history_id> <filename>` | Fork session — save all content up to a history ID to a file | `{"path","count","history_id"}` |
 | `:tool_confirm <call_id>` | Confirm a pending tool execution | `{"call_id"}` |
 | `:tool_decline <call_id>` | Decline a pending tool execution | `{"call_id"}` |
+| `:reasoning_level_set <0\|1\|2>` | Set reasoning level (0=off, 1=normal, 2=max). Default: 1 — set the startup level with `--reasoning-level <0\|1\|2>` (CLI flag wins over the session file's saved `reasoning_level`) | `{"level"}` |
+| `:video_config <fps> <res>` | Set the default video FPS and resolution (`res`: 0=default, 1=max) applied to videos ingested after it — each video keeps the settings it was ingested with | `{"fps","res"}` |
+| `:mcp_confirm <server> <code> <redirect_uri> [iss]` | Confirm MCP OAuth authorization with auth code | `{"server"}` |
+| `:mcp_decline <server>` | Decline MCP OAuth authorization | `{"server"}` |
 | `:mcp_skip` | Skip MCP server initialization | `null` |
+
+`:reasoning_level_set` and `:video_config` say what happens *from now on*, so
+they are accepted while a task runs and take effect at its next request — the
+request already being built keeps the level it was built with, and the videos
+already in the record keep the settings they were ingested with. Changing the
+level does not disturb prompt caching: it is a top-level request field, and the
+message prefix the provider caches is untouched (see
+[providers.md](providers.md#reasoning-mode-and-reasoning-fields)). The two MCP
+authorization answers are accepted mid-task for a different reason: an
+authorization is only ever pending before the session is ready, which is also
+what stops a task from starting, so there is nothing to serialize them against —
+and what they answer when nothing is pending (`STATE_NOT_IN_PROGRESS`) is more
+informative than "busy".
+
+One timing detail follows from "ingested": a video that arrives with a prompt
+queued as steering is ingested when the task splices it in at its next step
+boundary, so it takes the default in effect there — not the one in effect when
+the words were typed.
 
 Two commands carry a short form a user may type instead — `:q` for `:quit` and
 `:r` for `:reasoning_level_set <0|1|2>`. An adapter resolves a short form where a
@@ -152,13 +174,16 @@ These commands are rejected with an error if a task is currently running:
 
 | Command | Action | CO result |
 |---------|--------|-----------|
-| `:mcp_confirm <server> <code> <redirect_uri> [iss]` | Confirm MCP OAuth authorization with auth code | `{"server"}` |
-| `:mcp_decline <server>` | Decline MCP OAuth authorization | `{"server"}` |
 | `:model_set <id>` | Switch to a model by numeric ID | `{"active_id","active_name"}` |
 | `:model_load` | Reload model configs from the config file | `{"models"}` |
 | `:model_sync <content>` | Apply edited model config (sent by UI, not user-facing) | `{"models"}` |
-| `:reasoning_level_set <0\|1\|2>` | Set reasoning level (0=off, 1=normal, 2=max). Default: 1 — set the startup level with `--reasoning-level <0\|1\|2>` (CLI flag wins over the session file's saved `reasoning_level`) | `{"level"}` |
-| `:video_config <fps> <res>` | Set the default video FPS and resolution (`res`: 0=default, 1=max) applied to videos ingested after it — each video keeps the settings it was ingested with | `{"fps","res"}` |
+
+A model switch replaces the provider and the agent, and the step in flight is
+running inside the agent being replaced — there is no coherent way to apply one
+mid-task, so the command is refused instead of half-applied. The settings that
+only change what the *next* request asks for (`:reasoning_level_set`,
+`:video_config`) had the same shape but not the same problem, and are immediate
+(see above).
 
 ## Task Commands
 

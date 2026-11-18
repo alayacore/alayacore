@@ -20,7 +20,6 @@ func (p *modalityRecordingProvider) StreamMessages(
 	return func(func(StreamEvent, error) bool) {}, nil
 }
 
-func (p *modalityRecordingProvider) SetReasoningLevel(_ int)                       {}
 func (p *modalityRecordingProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 
 // TestAgentSendsOnlyDeclaredModalities pins the wiring, not the walk: the model's

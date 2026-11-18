@@ -46,11 +46,15 @@ func anthropicRequestMessages(t *testing.T, history []llm.ContentPart) []wireMes
 	}))
 	t.Cleanup(server.Close)
 
-	provider, err := providers.NewAnthropic(providers.BaseConfig{APIKey: "k", BaseURL: server.URL, Model: "m"})
+	provider, err := providers.NewAnthropic(providers.BaseConfig{
+		APIKey:         "k",
+		BaseURL:        server.URL,
+		Model:          "m",
+		ReasoningLevel: llm.NewReasoningLevel(1),
+	})
 	if err != nil {
 		t.Fatalf("NewAnthropic: %v", err)
 	}
-	provider.SetReasoningLevel(1)
 
 	events, err := provider.StreamMessages(t.Context(), history, nil, "", "")
 	if err != nil {

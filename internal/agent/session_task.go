@@ -372,7 +372,11 @@ func (s *Session) applyVideoDefault(part llm.ContentPart) {
 	switch v := part.(type) {
 	case *llm.VideoPart:
 		if v.FPS == 0 && s.modelService != nil {
-			v.FPS, v.Res = s.modelService.videoFPS, s.modelService.videoRes
+			// One load for the pair: :video_config is immediate, so the task
+			// goroutine can be stamping a video while run() swaps the default,
+			// and two reads could pair the new fps with the old res.
+			d := s.modelService.VideoConfig()
+			v.FPS, v.Res = d.FPS, d.Res
 		}
 	case *llm.ToolOutputPart:
 		for _, sub := range v.Output {

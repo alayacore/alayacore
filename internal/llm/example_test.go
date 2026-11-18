@@ -35,7 +35,6 @@ func (p *scriptedProvider) StreamMessages(_ context.Context, _ []llm.ContentPart
 	}, nil
 }
 
-func (p *scriptedProvider) SetReasoningLevel(int)                       {}
 func (p *scriptedProvider) SetReasoningConfigs(map[int]json.RawMessage) {}
 
 // Example_usage demonstrates the tool-calling loop end to end: the provider asks

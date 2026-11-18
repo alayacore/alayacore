@@ -293,9 +293,10 @@ func (s *Session) sendThemeListMsg() {
 }
 
 func (s *Session) sendReasoningMsg() {
-	s.writeSystemMsg(protocol.ReasoningLevelMsg{Level: s.modelService.reasoningLevel})
+	s.writeSystemMsg(protocol.ReasoningLevelMsg{Level: s.modelService.ReasoningLevel()})
 }
 
 func (s *Session) sendVideoConfigMsg() {
-	s.writeSystemMsg(protocol.VideoConfigMsg{FPS: s.modelService.videoFPS, Res: s.modelService.videoRes})
+	video := s.modelService.VideoConfig()
+	s.writeSystemMsg(protocol.VideoConfigMsg{FPS: video.FPS, Res: video.Res})
 }

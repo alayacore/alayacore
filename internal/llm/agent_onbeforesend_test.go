@@ -53,7 +53,6 @@ func (p *onBeforeSendProvider) StreamMessages(_ context.Context, history []Conte
 	}, nil
 }
 
-func (p *onBeforeSendProvider) SetReasoningLevel(_ int)                       {}
 func (p *onBeforeSendProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 
 // TestOnBeforeSendReplacesHistory pins the seam: a replacement returned by

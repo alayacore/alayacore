@@ -6,9 +6,14 @@ package agent
 // the agent/provider pair. The run() goroutine owns the service; the task
 // goroutine reads agent/provider via accessors. Model switching is cmdIdle
 // (rejected during a task), so no mutex is needed for agent/provider access.
+//
+// The two settings a running task must see change (:reasoning_level_set,
+// :video_config) are the exception and are held atomically — see the fields
+// below.
 
 import (
 	"fmt"
+	"sync/atomic"
 
 	"github.com/alayacore/alayacore/internal/config"
 	"github.com/alayacore/alayacore/internal/llm"
@@ -18,7 +23,8 @@ import (
 )
 
 // modelService manages model configuration, provider/agent lifecycle, and
-// reasoning/video settings. All owned by the run() goroutine.
+// reasoning/video settings. All owned by the run() goroutine, except the two
+// atomically held settings a running task reads.
 type modelService struct {
 	manager    *modelManager
 	runtimeMgr *runtimeManager
@@ -33,10 +39,21 @@ type modelService struct {
 	provider llm.Provider
 	agent    *llm.Agent
 
-	// Settings synced to provider
-	reasoningLevel int
-	videoFPS       int
-	videoRes       int
+	// Settings read by a task while it runs.
+	//
+	// These two are the exception to the "run() owns it" rule above, because the
+	// commands that write them (:reasoning_level_set, :video_config) are
+	// immediate: a task already running may keep going, and the change has to be
+	// visible to it from its next request on.
+	//
+	// reasoningLevel is shared, not copied: this is the one instance, and the
+	// provider reads through a pointer to it (llm.ReasoningLevel) instead of
+	// holding a second copy that every provider construction had to be told about.
+	// videoDefault has no second reader — nothing pushes it anywhere — so it is a
+	// plain swapped snapshot; the pair travels together because applyVideoDefault
+	// stamps fps and res at once (see videoConfig).
+	reasoningLevel llm.ReasoningLevel
+	videoDefault   atomic.Pointer[videoConfig]
 
 	// Context limit derived from active model config
 	contextLimit int64
@@ -48,11 +65,12 @@ type modelService struct {
 
 // newModelService creates a modelService with the given managers.
 func newModelService(manager *modelManager, runtimeMgr *runtimeManager) *modelService {
-	return &modelService{
-		manager:        manager,
-		runtimeMgr:     runtimeMgr,
-		reasoningLevel: config.DefaultReasoningLevel,
+	ms := &modelService{
+		manager:    manager,
+		runtimeMgr: runtimeMgr,
 	}
+	ms.reasoningLevel.Set(config.DefaultReasoningLevel)
+	return ms
 }
 
 // ============================================================================
@@ -184,7 +202,6 @@ func (ms *modelService) SwitchModel(modelConfig *modelConfig, baseTools []llm.To
 	ms.agent = agent
 	ms.contextLimit = int64(modelConfig.ContextLimit)
 	if ms.provider != nil {
-		ms.provider.SetReasoningLevel(ms.reasoningLevel)
 		ms.provider.SetReasoningConfigs(modelConfig.ReasoningConfigs())
 	}
 	return nil
@@ -224,12 +241,34 @@ func (ms *modelService) Reset() {
 // Settings
 // ============================================================================
 
-// SetReasoningLevel sets the reasoning level and syncs to the provider.
+// SetReasoningLevel sets the reasoning level.
+//
+// Callable from run() while a task runs (:reasoning_level_set is immediate). One
+// store reaches every reader: the provider, which builds the next request body
+// from this object, and the session's own consumers — the SM reasoning frame and
+// the session file's metadata, the latter written from the task goroutine. A
+// request already being built keeps the level it started with; the next one picks
+// this up.
 func (ms *modelService) SetReasoningLevel(level int) {
-	ms.reasoningLevel = level
-	if ms.provider != nil {
-		ms.provider.SetReasoningLevel(level)
-	}
+	ms.reasoningLevel.Set(level)
+}
+
+// ReasoningLevel returns the current reasoning level.
+//
+// Safe from the task goroutine.
+func (ms *modelService) ReasoningLevel() int {
+	return ms.reasoningLevel.Get()
+}
+
+// videoConfig is one snapshot of the session's video default.
+//
+// A struct rather than two fields because fps and res are read together — by
+// applyVideoDefault, which stamps them onto a VideoPart — and two independent
+// reads could pair the new fps with the old res, a setting that never existed.
+// One pointer, swapped whole, makes the pair indivisible.
+type videoConfig struct {
+	FPS int
+	Res int
 }
 
 // SetVideoConfig sets the default video FPS and resolution applied to videos
@@ -237,9 +276,24 @@ func (ms *modelService) SetReasoningLevel(level int) {
 // snapshots the value when it is ingested, so changing the default never
 // rewrites a message already in the record. Nothing is pushed to the provider —
 // there is no global video state to push (see llm.VideoPart).
+//
+// Callable from run() while a task runs (:video_config is immediate): the task
+// goroutine stamps the video it is producing with whichever snapshot it loads,
+// and the next video stamped gets this one.
 func (ms *modelService) SetVideoConfig(fps int, resolution int) {
-	ms.videoFPS = fps
-	ms.videoRes = resolution
+	ms.videoDefault.Store(&videoConfig{FPS: fps, Res: resolution})
+}
+
+// VideoConfig returns the video default as it was at one instant.
+//
+// Safe from the task goroutine. Unset (never configured) and 0/0 are the same
+// thing: a part with no settings of its own is stamped 0/0, which is how "let
+// the provider decide" travels (see llm.VideoPart).
+func (ms *modelService) VideoConfig() videoConfig {
+	if d := ms.videoDefault.Load(); d != nil {
+		return *d
+	}
+	return videoConfig{}
 }
 
 // ============================================================================
@@ -252,7 +306,7 @@ func (ms *modelService) createProviderAndAgent(
 	systemPrompt, extraSystemPrompt string,
 	maxSteps int,
 ) (llm.Provider, *llm.Agent, error) {
-	provider, err := createProviderFromConfig(modelConfig, ms.debugDir, ms.proxyURL)
+	provider, err := ms.createProviderFromConfig(modelConfig)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -278,8 +332,14 @@ func (ms *modelService) createProviderAndAgent(
 // Package-level helper
 // ============================================================================
 
-func createProviderFromConfig(modelCfg *modelConfig, debugDir, proxyURL string) (llm.Provider, error) {
-	client, err := providers.NewHTTPClient(proxyURL, debugDir)
+// createProviderFromConfig builds one provider for modelCfg.
+//
+// A method rather than a package function because the provider needs one piece of
+// session state at construction: the reasoning level object it will read on every
+// request. Handing over the address of ms.reasoningLevel is what makes the level
+// one value instead of a copy each side has to keep in step.
+func (ms *modelService) createProviderFromConfig(modelCfg *modelConfig) (llm.Provider, error) {
+	client, err := providers.NewHTTPClient(ms.proxyURL, ms.debugDir)
 	if err != nil {
 		return nil, fmt.Errorf("provider: failed to create HTTP client: %w", err)
 	}
@@ -291,6 +351,7 @@ func createProviderFromConfig(modelCfg *modelConfig, debugDir, proxyURL string) 
 		Model:            modelCfg.ModelName,
 		HTTPClient:       client,
 		MaxTokens:        modelCfg.MaxTokens,
+		ReasoningLevel:   &ms.reasoningLevel,
 		ReasoningConfigs: modelCfg.ReasoningConfigs(),
 		ReasoningField:   modelCfg.ReasoningField,
 		// The same setting the agent got: the request field and the execution

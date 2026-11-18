@@ -367,6 +367,14 @@ Reasoning level itself (`0`/`1`/`2`) drives:
 - which `reasoning_*` block is merged into the request body,
 - the `R0`/`R1`/`R2` status indicator.
 
+The level is read once, when a request body is built, so `:reasoning_level_set`
+is accepted while a task is running: the request already on the wire keeps the
+level it was built with, and the task's next request — or the next prompt —
+uses the new one. It is a request parameter and nothing else: `messages`,
+`tools` and the system prompt do not change, so a level change does not
+invalidate a provider's cached prefix — the same prefix-stability the promotion
+below relies on.
+
 ### Common shapes
 
 | Provider family | `reasoning_1` example | `reasoning_2` example |

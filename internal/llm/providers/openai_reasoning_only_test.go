@@ -37,16 +37,21 @@ func captureRequest(t *testing.T, history []llm.ContentPart, reasoning bool) []m
 	}))
 	t.Cleanup(server.Close)
 
+	// The parameter is the session's level: a request with reasoning on and one
+	// with it off must serialize to the same assistant message. The level object
+	// is handed over at construction, exactly as the session does it.
+	level := llm.NewReasoningLevel(0)
+	if reasoning {
+		level.Set(1)
+	}
 	provider, err := providers.NewOpenAI(providers.BaseConfig{
 		APIKey:         "k",
 		BaseURL:        server.URL,
 		ReasoningField: "reasoning_content",
+		ReasoningLevel: level,
 	})
 	if err != nil {
 		t.Fatal(err)
-	}
-	if reasoning {
-		provider.SetReasoningLevel(1)
 	}
 
 	events, err := provider.StreamMessages(t.Context(), history, nil, "", "")

@@ -849,7 +849,7 @@ func TestNewSessionReasoningLevelFlag(t *testing.T) {
 		ReasoningLevel:    0,
 		ReasoningLevelSet: true,
 	}, nil)
-	if got := s.modelService.reasoningLevel; got != config.ReasoningLevelOff {
+	if got := s.modelService.ReasoningLevel(); got != config.ReasoningLevelOff {
 		t.Errorf("reasoningLevel = %d, want %d (from --reasoning-level)", got, config.ReasoningLevelOff)
 	}
 
@@ -858,7 +858,7 @@ func TestNewSessionReasoningLevelFlag(t *testing.T) {
 		Input:  &nopInput{},
 		Output: &nopOutput{},
 	}, nil)
-	if got := s2.modelService.reasoningLevel; got != config.DefaultReasoningLevel {
+	if got := s2.modelService.ReasoningLevel(); got != config.DefaultReasoningLevel {
 		t.Errorf("reasoningLevel = %d, want default %d", got, config.DefaultReasoningLevel)
 	}
 }
@@ -878,7 +878,7 @@ func TestRestoreSessionReasoningLevelFlagPrecedence(t *testing.T) {
 		ReasoningLevel:    2,
 		ReasoningLevelSet: true,
 	}, data)
-	if got := s.modelService.reasoningLevel; got != config.ReasoningLevelMax {
+	if got := s.modelService.ReasoningLevel(); got != config.ReasoningLevelMax {
 		t.Errorf("reasoningLevel = %d, want %d (CLI flag must override session file)", got, config.ReasoningLevelMax)
 	}
 
@@ -887,7 +887,7 @@ func TestRestoreSessionReasoningLevelFlagPrecedence(t *testing.T) {
 		Input:  &nopInput{},
 		Output: &nopOutput{},
 	}, data)
-	if got := s2.modelService.reasoningLevel; got != config.ReasoningLevelOff {
+	if got := s2.modelService.ReasoningLevel(); got != config.ReasoningLevelOff {
 		t.Errorf("reasoningLevel = %d, want %d (session file value preserved)", got, config.ReasoningLevelOff)
 	}
 }

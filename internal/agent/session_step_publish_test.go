@@ -349,7 +349,6 @@ func (m *stepBlockingProvider) StreamMessages(_ context.Context, _ []llm.Content
 	}, nil
 }
 
-func (m *stepBlockingProvider) SetReasoningLevel(_ int)                       {}
 func (m *stepBlockingProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 
 func TestSaveDuringStreaming_EndToEnd(t *testing.T) {

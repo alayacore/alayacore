@@ -68,7 +68,6 @@ func (m *mockProviderStepFail) StreamMessages(_ context.Context, _ []llm.Content
 	}, nil
 }
 
-func (m *mockProviderStepFail) SetReasoningLevel(_ int)                       {}
 func (m *mockProviderStepFail) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 
 func TestRunTaskPreservesPartialResultsOnError(t *testing.T) {
@@ -259,7 +258,6 @@ func (panicProvider) StreamMessages(_ context.Context, _ []llm.ContentPart, _ []
 	}, nil
 }
 
-func (panicProvider) SetReasoningLevel(_ int)                       {}
 func (panicProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 
 // The content a user watched stream in must survive a panic all the way to the
@@ -341,7 +339,6 @@ func (p *cutStreamProvider) StreamMessages(_ context.Context, history []llm.Cont
 	}, nil
 }
 
-func (p *cutStreamProvider) SetReasoningLevel(_ int)                       {}
 func (p *cutStreamProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 
 // smTexts returns the text of every SM frame of one type in captured output, in

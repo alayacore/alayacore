@@ -95,7 +95,6 @@ func (m *recordProvider) StreamMessages(_ context.Context, history []llm.Content
 	}, nil
 }
 
-func (m *recordProvider) SetReasoningLevel(_ int)                       {}
 func (m *recordProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 
 func (m *recordProvider) summarizeCalls() int {

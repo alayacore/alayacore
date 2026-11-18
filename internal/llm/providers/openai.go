@@ -259,12 +259,6 @@ func NewOpenAI(cfg BaseConfig) (*OpenAIProvider, error) {
 	return p, nil
 }
 
-// SetReasoningLevel sets the reasoning level for OpenAI.
-// 0=off, 1=high, 2=xhigh.
-func (p *OpenAIProvider) SetReasoningLevel(level int) {
-	p.reasoningLevel = level
-}
-
 // StreamMessages streams messages from OpenAI
 func (p *OpenAIProvider) StreamMessages(
 	ctx context.Context,
@@ -352,8 +346,8 @@ func (p *OpenAIProvider) StreamMessages(
 }
 
 // SetReasoningConfigs stores per-level provider wire-format JSON that
-// is merged into the request body at the level returned by
-// SetReasoningLevel. nil/empty entries are dropped so an unset level
+// is merged into the request body at the level BaseConfig.ReasoningLevel
+// currently holds. nil/empty entries are dropped so an unset level
 // produces no fields in the body.
 func (p *OpenAIProvider) SetReasoningConfigs(configs map[int]json.RawMessage) {
 	p.reasoningConfigs = nil

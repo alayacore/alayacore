@@ -44,7 +44,6 @@ func (p *retryScriptProvider) StreamMessages(_ context.Context, _ []ContentPart,
 	}, nil
 }
 
-func (p *retryScriptProvider) SetReasoningLevel(_ int)                       {}
 func (p *retryScriptProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 
 func (p *retryScriptProvider) onRetry(n RetryNotice) error {
@@ -95,7 +94,6 @@ func (p *streamScriptProvider) StreamMessages(_ context.Context, contents []Cont
 	}, nil
 }
 
-func (p *streamScriptProvider) SetReasoningLevel(_ int)                       {}
 func (p *streamScriptProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 
 func (p *streamScriptProvider) onRetry(n RetryNotice) error {

@@ -47,7 +47,6 @@ func (p *readyProbeProvider) StreamMessages(_ context.Context, _ []llm.ContentPa
 	return nil, errors.New("probe: stop")
 }
 
-func (p *readyProbeProvider) SetReasoningLevel(_ int)                       {}
 func (p *readyProbeProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 
 // newDeferredPromptSession returns a session that is Initializing (MCP

@@ -344,6 +344,5 @@ func (StepCompleteEvent) isStreamEvent() {}
 // Provider defines the interface for LLM providers
 type Provider interface {
 	StreamMessages(ctx context.Context, contents []ContentPart, tools []ToolDefinition, systemPrompt string, extraSystemPrompt string) (iter.Seq2[StreamEvent, error], error)
-	SetReasoningLevel(level int)
 	SetReasoningConfigs(configs map[int]json.RawMessage)
 }

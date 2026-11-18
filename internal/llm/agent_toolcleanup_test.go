@@ -34,7 +34,6 @@ func (m *errorMidStreamProvider) StreamMessages(_ context.Context, _ []ContentPa
 	}, nil
 }
 
-func (m *errorMidStreamProvider) SetReasoningLevel(_ int)                       {}
 func (m *errorMidStreamProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 
 // TestStreamErrorCancelsInFlightTool verifies that when the provider
