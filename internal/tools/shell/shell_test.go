@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -76,6 +77,105 @@ func detectForTest(t *testing.T) *Shell {
 		t.Fatal("Detect() returned nil")
 	}
 	return s
+}
+
+// An ALAYACORE_SHELL value that cannot be honored must say so. Silence was the
+// defect: the user asked for one syntax, the model was handed another, and every
+// command after that was written for the wrong shell with nothing in the output
+// to show why.
+func TestDetectEnvOverrideWarnsOnUnknownName(t *testing.T) {
+	origEnv := os.Getenv("ALAYACORE_SHELL")
+	defer os.Setenv("ALAYACORE_SHELL", origEnv)
+
+	// Detection runs once per process; the override has to be looked at again.
+	detection.once = sync.Once{}
+	detection.shell = nil
+	t.Cleanup(func() {
+		detection.once = sync.Once{}
+		detection.shell = nil
+	})
+
+	os.Setenv("ALAYACORE_SHELL", "definitely-not-a-shell")
+
+	stderr, err := captureStderr(t, func() { detectForTest(t) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stderr, `warning: ALAYACORE_SHELL="definitely-not-a-shell"`) {
+		t.Errorf("stderr = %q, want a warning naming the value", stderr)
+	}
+	// The hint has to be usable: the names that would have worked, in the order
+	// detection would try them.
+	if !strings.Contains(stderr, "is not a known shell (known: ") {
+		t.Errorf("stderr = %q, want the warning to list the accepted names", stderr)
+	}
+	for _, s := range knownShells {
+		if !strings.Contains(stderr, s.Binary) {
+			t.Errorf("stderr = %q, want it to mention %q", stderr, s.Binary)
+		}
+	}
+	if !strings.Contains(stderr, "using shell detection") {
+		t.Errorf("stderr = %q, want it to say what happened instead", stderr)
+	}
+
+	// A miss costs the choice, not the tool.
+	if got := detectForTest(t); got == nil || got.Binary == "" {
+		t.Errorf("detection did not fall back to an installed shell: %+v", got)
+	}
+}
+
+// The other way a value can miss: the name is known, its binary is not on PATH.
+// An empty PATH hides every shell, which makes the case deterministic on any
+// machine rather than one that happens to lack an optional shell.
+func TestDetectEnvOverrideWarnsWhenTheBinaryIsAbsent(t *testing.T) {
+	origEnv := os.Getenv("ALAYACORE_SHELL")
+	defer os.Setenv("ALAYACORE_SHELL", origEnv)
+
+	detection.once = sync.Once{}
+	detection.shell = nil
+	t.Cleanup(func() {
+		detection.once = sync.Once{}
+		detection.shell = nil
+	})
+
+	os.Setenv("ALAYACORE_SHELL", knownShells[0].Name)
+	t.Setenv("PATH", t.TempDir()) // nothing is on it
+
+	stderr, err := captureStderr(t, func() { Detect() })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stderr, "is not on PATH") {
+		t.Errorf("stderr = %q, want it to say %q is not on PATH", stderr, knownShells[0].Binary)
+	}
+	if !strings.Contains(stderr, "using shell detection") {
+		t.Errorf("stderr = %q, want it to say what happened instead", stderr)
+	}
+}
+
+// captureStderr runs fn with os.Stderr redirected to a pipe and returns what was
+// written to it.
+func captureStderr(t *testing.T, fn func()) (string, error) {
+	t.Helper()
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		return "", err
+	}
+
+	origStderr := os.Stderr
+	os.Stderr = w
+	defer func() { os.Stderr = origStderr }()
+
+	fn()
+
+	if err := w.Close(); err != nil {
+		r.Close()
+		return "", err
+	}
+	written, readErr := io.ReadAll(r)
+	r.Close()
+	return string(written), readErr
 }
 
 func TestResolvedBinary(t *testing.T) {

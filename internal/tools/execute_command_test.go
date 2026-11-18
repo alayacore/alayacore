@@ -29,11 +29,10 @@ func TestExecuteCommandNormalCompletion(t *testing.T) {
 // A tool description is prompt prefix — it sits at the head of what the provider
 // caches — so nothing a startup flag sets may be spelled into it. The command
 // timeout used to be: the description ended with "All commands are killed after
-// N", which meant every run with a different --command-timeout (or a changed
-// ALAYACORE_COMMAND_TIMEOUT) paid for a full re-write of that prefix. The
-// description is the shell's syntax fragment and nothing else, whatever the
-// limit is; the limit itself is stated in the result of a command it stops (see
-// timeoutSuffix).
+// N", which meant every run with a different --command-timeout paid for a full
+// re-write of that prefix. The description is the shell's syntax fragment and
+// nothing else, whatever the limit is; the limit itself is stated in the result
+// of a command it stops (see timeoutSuffix).
 func TestExecuteCommandDescriptionCarriesNoRuntimeConfig(t *testing.T) {
 	orig := shell.DefaultCommandTimeout
 	defer func() { shell.DefaultCommandTimeout = orig }()

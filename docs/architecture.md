@@ -245,7 +245,7 @@ The `execute_command` tool uses a cross-platform shell detection system. On star
 
 **Detection order:**
 
-1. `ALAYACORE_SHELL` environment variable (matched against known shells; unknown values are ignored)
+1. `ALAYACORE_SHELL` environment variable (matched against known shells by display name, case-insensitively, or by binary name). A value that cannot be honored — an unknown name, or one whose binary is not on PATH — is reported on stderr with the names that would work, and detection continues without it: a silent miss would leave the model writing one shell's syntax while the user believed it had another
 2. OS-specific `knownShells` list tried in preference order (guaranteed to succeed — `sh` on Unix, `cmd` on Windows)
 
 **Supported shells:**

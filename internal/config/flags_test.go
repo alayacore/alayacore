@@ -32,11 +32,6 @@ func TestParseReasoningLevelFlag(t *testing.T) {
 }
 
 func TestParseCommandTimeoutFlag(t *testing.T) {
-	// Isolate from any ALAYACORE_COMMAND_TIMEOUT in the environment. Empty is
-	// the unset value here: config reads it with os.Getenv. t.Setenv restores
-	// the real environment (including "was not set") when the test ends.
-	t.Setenv("ALAYACORE_COMMAND_TIMEOUT", "")
-
 	// Parse reads os.Args, which is process-global: restore it, or every test
 	// that runs after this one in the same binary sees these flags.
 	origArgs := os.Args
@@ -59,35 +54,6 @@ func TestParseCommandTimeoutFlag(t *testing.T) {
 				t.Errorf("CommandTimeout = %d, want %d", s.CommandTimeout, tt.want)
 			}
 		})
-	}
-}
-
-func TestParseCommandTimeoutEnv(t *testing.T) {
-	origArgs := os.Args
-	t.Cleanup(func() { os.Args = origArgs })
-
-	// Env var provides the default when the flag is absent.
-	t.Setenv("ALAYACORE_COMMAND_TIMEOUT", "45")
-	os.Args = []string{"alayacore"}
-	s := Parse()
-	if s.CommandTimeout != 45 {
-		t.Errorf("CommandTimeout = %d, want 45 (from env)", s.CommandTimeout)
-	}
-
-	// Env var 0 also means no limit.
-	t.Setenv("ALAYACORE_COMMAND_TIMEOUT", "0")
-	os.Args = []string{"alayacore"}
-	s = Parse()
-	if s.CommandTimeout != 0 {
-		t.Errorf("CommandTimeout = %d, want 0 (env no limit)", s.CommandTimeout)
-	}
-
-	// An explicit flag overrides the env var.
-	t.Setenv("ALAYACORE_COMMAND_TIMEOUT", "45")
-	os.Args = []string{"alayacore", "--command-timeout", "30"}
-	s = Parse()
-	if s.CommandTimeout != 30 {
-		t.Errorf("CommandTimeout = %d, want 30 (flag beats env)", s.CommandTimeout)
 	}
 }
 

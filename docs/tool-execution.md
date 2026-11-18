@@ -288,13 +288,12 @@ both the header and the error text say it that way.
 ## Where the Command Timeout Is Stated
 
 Not in the tool description. The description is part of the prompt prefix the
-provider caches, so a value that a startup flag sets — `--command-timeout`, or
-`ALAYACORE_COMMAND_TIMEOUT` in a shell profile — would be spelled into the head
-of every request, and any change to it would cost a full re-write of that prefix
-while buying the model a limit it cannot apply until it hits one. It is stated
-where it is actionable instead: `Command timed out. (30s)` in the result of the
-command it stopped, or `timed out (30s): ...` in the search that hit it. That
-result text is paid for only when a limit is actually reached.
+provider caches, so a value a startup flag sets (`--command-timeout`) would be
+spelled into the head of every request, and any change to it would cost a full
+re-write of that prefix while buying the model a limit it cannot apply until it
+hits one. It is stated where it is actionable instead: `Command timed out. (30s)`
+in the result of the command it stopped, or `timed out (30s): ...` in the search
+that hit it. That result text is paid for only when a limit is actually reached.
 
 The syntax fragment stays. It varies with the shell the host detected
 (`ALAYACORE_SHELL` overrides the detection), and that variance cannot be

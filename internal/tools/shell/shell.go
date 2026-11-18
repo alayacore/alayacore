@@ -17,17 +17,19 @@
 // The value is deliberately absent from the tool description. A description is
 // part of the prompt prefix the provider caches, and a startup flag spelled
 // into it means that any change to the flag — a script passing
-// --command-timeout, an ALAYACORE_COMMAND_TIMEOUT edited in a profile — costs
-// a full re-write of that prefix. The limit is stated where it is actionable
-// instead: in the result of the command it stopped, which is the one moment a
-// model needs the number (see FormatDuration).
+// --command-timeout, a wrapper that sets it for one project — costs a full
+// re-write of that prefix. The limit is stated where it is actionable instead:
+// in the result of the command it stopped, which is the one moment a model
+// needs the number (see FormatDuration).
 //
 // On startup the package probes the OS environment for available shells and
-// selects the best candidate via [Detect].  The caller can override the
-// choice by setting the ALAYACORE_SHELL environment variable.
+// selects the best candidate via [Detect]. A miss is not silently swallowed:
+// an ALAYACORE_SHELL value that names an unknown shell, or one whose binary is
+// not on PATH, is reported on stderr and detection carries on without it.
 package shell
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -40,11 +42,10 @@ import (
 // run until they finish or are canceled. execute_command, search_content and
 // [FormatDuration] all reference this value.
 //
-// This is a package-level var so that main() / app.Setup can override it
-// from the --command-timeout CLI flag or the ALAYACORE_COMMAND_TIMEOUT
-// environment variable. Tools created before that assignment would carry the
-// old value into the deadline they install, which is why app.Setup applies it
-// first.
+// This is a package-level var so that app.Setup can override it from the
+// --command-timeout CLI flag. Tools created before that assignment would carry
+// the old value into the deadline they install, which is why app.Setup applies
+// it first.
 var DefaultCommandTimeout time.Duration // 0 = no limit
 
 type Shell struct {
@@ -108,16 +109,28 @@ func Detect() *Shell {
 }
 
 // detect performs the actual shell detection.
+//
+// An ALAYACORE_SHELL value that cannot be honored — an unknown name, or a known
+// one whose binary is not on PATH — is reported on stderr rather than dropped.
+// The variable overrides a preference order over whatever the machine happens to
+// have, and a silent miss is the one failure its user cannot see: they asked for
+// zsh, the model was told bash, and every command that follows is written in the
+// wrong syntax with nothing to point at. The warning goes to the same stderr the
+// other startup warnings use, before the TUI takes the screen.
 func detect() *Shell {
 	// 1. Honor explicit override.
 	if env := os.Getenv("ALAYACORE_SHELL"); env != "" {
-		lower := strings.ToLower(env)
-		for _, s := range knownShells {
-			if strings.EqualFold(s.Name, lower) || s.Binary == env {
-				if lookPath(s.Binary) {
-					return s
-				}
-			}
+		switch s := shellByName(env); {
+		case s == nil:
+			fmt.Fprintf(os.Stderr,
+				"warning: ALAYACORE_SHELL=%q is not a known shell (known: %s); using shell detection\n",
+				env, knownShellNames())
+		case !lookPath(s.Binary):
+			fmt.Fprintf(os.Stderr,
+				"warning: ALAYACORE_SHELL=%q names %q, which is not on PATH; using shell detection\n",
+				env, s.Binary)
+		default:
+			return s
 		}
 	}
 
@@ -132,6 +145,32 @@ func detect() *Shell {
 
 	// Defensive fallback — should never be reached.
 	return knownShells[len(knownShells)-1]
+}
+
+// shellByName returns the known shell the user named — by display name,
+// case-insensitively, or by binary name.
+func shellByName(name string) *Shell {
+	for _, s := range knownShells {
+		if strings.EqualFold(s.Name, name) || s.Binary == name {
+			return s
+		}
+	}
+	return nil
+}
+
+// knownShellNames renders what ALAYACORE_SHELL accepts, in preference order, for
+// the warning a miss produces. A shell whose display name and binary differ shows
+// both, since either is accepted: "pwsh (PowerShell Core)".
+func knownShellNames() string {
+	names := make([]string, 0, len(knownShells))
+	for _, s := range knownShells {
+		if strings.EqualFold(s.Name, s.Binary) {
+			names = append(names, s.Binary)
+			continue
+		}
+		names = append(names, fmt.Sprintf("%s (%s)", s.Binary, s.Name))
+	}
+	return strings.Join(names, ", ")
 }
 
 // ResolvedBinary returns the absolute path to the shell binary after PATH

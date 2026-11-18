@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/alayacore/alayacore/internal/tools"
@@ -276,7 +275,7 @@ func Parse() *Settings {
 		AutoSummarize:  *f.autoSummarize,
 		ToolConfirm:    parseToolConfirm(*f.toolConfirm),
 		BuiltinTools:   builtinToolsFilter,
-		CommandTimeout: resolveCommandTimeout(fs, *f.commandTimeout),
+		CommandTimeout: *f.commandTimeout,
 		NoDelta:        *f.noDelta,
 		NoMarkdown:     *f.noMarkdown,
 		ReasoningLevel: *f.reasoningLevel,
@@ -310,30 +309,6 @@ func parseToolConfirm(raw string) []string {
 		}
 	}
 	return names
-}
-
-// resolveCommandTimeout resolves the command timeout in seconds using the
-// following precedence (highest first):
-//  1. --command-timeout CLI flag (if explicitly provided)
-//  2. ALAYACORE_COMMAND_TIMEOUT environment variable (integer seconds)
-//  3. The flag's default value (0 seconds = no limit)
-//
-// A value of 0 means no limit: shell commands run until they finish or are
-// canceled, matching --max-steps' "unset = unlimited" behavior.
-//
-// This allows users to set a persistent default via their shell profile
-// while still overriding per-invocation via --command-timeout.
-func resolveCommandTimeout(fs *flag.FlagSet, flagSec int) int {
-	if flagSetHasBeenVisited(fs, "command-timeout") {
-		return flagSec
-	}
-	if env := os.Getenv("ALAYACORE_COMMAND_TIMEOUT"); env != "" {
-		if sec, err := strconv.Atoi(env); err == nil && sec >= 0 {
-			return sec
-		}
-		fmt.Fprintf(os.Stderr, "warning: invalid ALAYACORE_COMMAND_TIMEOUT=%q, using default (no limit)\n", env)
-	}
-	return flagSec
 }
 
 // flagSetHasBeenVisited returns true if the named flag on fs was explicitly

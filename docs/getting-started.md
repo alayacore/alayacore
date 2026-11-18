@@ -54,6 +54,8 @@ export ALAYACORE_SHELL=pwsh
 export ALAYACORE_SHELL=zsh
 ```
 
+The value is matched against the known shells by name or binary, and a value that cannot be used — a typo, or a shell that is not installed — is not swallowed: startup prints a warning naming the accepted shells and detection proceeds without the override, because the alternative is the model writing one shell's syntax while you believe it has another.
+
 ## CLI Flags
 
 | Flag | Default | Description |
@@ -65,7 +67,7 @@ export ALAYACORE_SHELL=zsh
 | `--session` | *(none)* | Path to session file for loading/saving conversations. A leading `~` or `~/` expands to your home directory; `~user/…` is not expanded (this program can only resolve its own) |
 | `--proxy` | *(none)* | Proxy URL. Supports `http://`, `https://`, and `socks5://` schemes |
 | `--max-steps` | `0` (no limit) | Maximum number of agent loop iterations per prompt. When set to 0 (the default), the agent loops until the model produces a final response. Exceeding this limit raises an error — use `:continue` to retry. |
-| `--command-timeout` | `0` (no limit) | Maximum duration in seconds for shell command execution (`execute_command`, `search_content`). When set to 0 (the default), commands run until they finish or are canceled. Can also be set persistently via the `ALAYACORE_COMMAND_TIMEOUT` environment variable. The limit is stated in the result of a command (or search) it stops — `Command timed out. (30s)` — never in the tool description: a description is prompt prefix, so a startup flag written into it would cost the provider's cached prefix a full re-write whenever it changed. |
+| `--command-timeout` | `0` (no limit) | Maximum duration in seconds for shell command execution (`execute_command`, `search_content`). When set to 0 (the default), commands run until they finish or are canceled. The limit is stated in the result of a command (or search) it stops — `Command timed out. (30s)` — never in the tool description: a description is prompt prefix, so a startup flag written into it would cost the provider's cached prefix a full re-write whenever it changed. |
 | `--auto-summarize` | `0` (disabled) | Enable auto-summarization at given threshold percentage (e.g. `--auto-summarize=65`, 0 = disabled). Must be 0-100: above 100 the threshold could never be reached, so an out-of-range value is rejected at startup instead of silently disabling the feature. The usable ceiling is **below** 100 where the provider rejects a request whose `prompt + max_tokens` exceeds `context_limit`: there the threshold has to stay under `(context_limit - max_tokens) / context_limit` (see [context-tracking.md](context-tracking.md)). |
 | `--reasoning-level` | `1` (normal) | Startup reasoning level: `0`=off, `1`=normal, `2`=max. Explicitly provided values win over the session file's saved `reasoning_level`; without the flag the saved value (or default) is used. Equivalent to running `:reasoning_level_set <level>` at startup. |
 | `--tool-confirm` | *(none)* | Comma-separated tool `names` that require user confirmation before execution (e.g. `--tool-confirm execute_command,search_content`). Not compatible with `--terseio` |
