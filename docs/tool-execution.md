@@ -252,6 +252,7 @@ a stack there would follow the conversation around while telling the model
 nothing it can act on. Nothing about it is retried or resumed — see
 [error-handling.md](error-handling.md#a-cut-stream-is-resumed-not-re-sent), where
 a failure that is this program's own is the one class neither answer covers.
+`internal/llm/agent_toolpanic_test.go` runs the case in both modes.
 
 The serial mode needs none of that machinery and inherits its guarantees
 instead: no goroutine is ever started, so there is nothing to wait for, and a

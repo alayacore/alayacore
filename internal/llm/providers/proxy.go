@@ -46,13 +46,11 @@ func NewHTTPClientWithProxy(proxyURL string) (*http.Client, error) {
 				Password: password,
 			}
 		}
-		// SOCKS5 is the one case that forces the dial function to be replaced,
-		// and the dialer being replaced is where the connect deadline lives, so
-		// it is handed to SOCKS5 for reaching the proxy rather than copied as
-		// numbers: one dial function, one deadline, no second place for it to
-		// drift. DialContext (not Dial) so the request's context reaches both
-		// that connect and the SOCKS handshake: :cancel ends a dial that is
-		// still under way instead of waiting for it.
+		// SOCKS5 is the one case that forces the dial function to be replaced, so
+		// it is handed the dial function DefaultTransport already uses (see
+		// ctxDialFunc) rather than numbers of its own; DialContext also carries
+		// the request's context into the connect and the SOCKS handshake, where
+		// :cancel can end a dial still under way.
 		if transport.DialContext == nil {
 			return nil, fmt.Errorf("http.DefaultTransport dials without a context")
 		}
@@ -87,6 +85,10 @@ func NewHTTPClientWithProxy(proxyURL string) (*http.Client, error) {
 // function — the one place the connect deadline and the keepalive settings live —
 // instead of restating them as numbers that would then have to be kept in step
 // with Go's defaults by hand.
+//
+// Dial is required by the parameter's type (proxy.Dialer), not by this program:
+// SOCKS5 prefers ContextDialer when it is given one, so DialContext is the method
+// that runs, and Dial never does.
 type ctxDialFunc func(ctx context.Context, network, addr string) (net.Conn, error)
 
 func (f ctxDialFunc) Dial(network, addr string) (net.Conn, error) {

@@ -186,14 +186,15 @@ not verify, an https URL answered by a plain-HTTP server, and a name that does
 not resolve — plus anything that never reached the transport at all, which is
 structural to detect because `http.Client` wraps everything it returns in
 `*url.Error`. The price is stated once: a wrong port costs the budget — three
-notices, about seven seconds — and a host that never answers the same three at
-30s apiece, about two minutes. Both are the accepted price of a local model
-server that is restarting.
+notices, about seven seconds — and a host that never answers costs the same three
+notices at 30s apiece, about two minutes. That is the accepted price of a local
+model server: from the client, one that is restarting and one that is gone look
+exactly alike.
 
-A `context.Canceled` is never retried, and a cancel that beats its own connection
-error is reported as the cancellation (no notice) — including on the last
-attempt, where the budget has already run out: what the user did outranks the
-transport error the budget happened to end on.
+A cancellation is never retried, and one that beats its own connection error is
+reported as the cancellation (no notice) — including on the last attempt, where
+the budget has already run out: what the user did outranks the transport error the
+budget happened to end on.
 
 A deadline is not in that list, because the error cannot say whose it was. net's
 `errTimeout` — the `i/o timeout` of a connect nobody answered — reports

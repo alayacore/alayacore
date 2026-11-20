@@ -39,6 +39,10 @@ func boomTool() []Tool {
 // goroutine, and the runtime answers that by ending the process — taking the
 // conversation with it, which is the one thing the agent's own recover refuses to
 // allow.
+//
+// The panic must not become a tool result, either: a result is model-visible text
+// that history keeps and every later request re-sends. Hence the assertion on
+// OnToolOutput below — no result is produced at all, so none can carry a stack.
 func TestToolPanicEndsTheStepNotTheProcess(t *testing.T) {
 	for _, mode := range []struct {
 		name   string
@@ -48,7 +52,10 @@ func TestToolPanicEndsTheStepNotTheProcess(t *testing.T) {
 		{"serial", true},
 	} {
 		t.Run(mode.name, func(t *testing.T) {
-			var finished []ContentPart
+			var (
+				finished []ContentPart
+				outputs  int
+			)
 			agent := NewAgent(AgentConfig{
 				Provider:        panickingProvider(),
 				Tools:           boomTool(),
@@ -59,6 +66,10 @@ func TestToolPanicEndsTheStepNotTheProcess(t *testing.T) {
 			_, err := agent.Stream(context.Background(), userText(), StreamCallbacks{
 				OnStepFinish: func(contents []ContentPart, _ Usage) error {
 					finished = contents
+					return nil
+				},
+				OnToolOutput: func(string, []ContentPart, error, uint64) error {
+					outputs++
 					return nil
 				},
 			})
@@ -72,6 +83,9 @@ func TestToolPanicEndsTheStepNotTheProcess(t *testing.T) {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("error = %v, want it to contain %q", err, want)
 				}
+			}
+			if outputs != 0 {
+				t.Errorf("OnToolOutput ran %d times, want 0: a panic produces no result", outputs)
 			}
 
 			// The step's other content is not the panic's to take: the text that
@@ -87,38 +101,5 @@ func TestToolPanicEndsTheStepNotTheProcess(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-// The panic text is the report, not a tool result: a result would be re-sent to
-// the provider on the next request, carrying a stack into the conversation.
-func TestToolPanicNeverBecomesAToolResult(t *testing.T) {
-	agent := NewAgent(AgentConfig{
-		Provider: panickingProvider(),
-		Tools:    boomTool(),
-		MaxSteps: 3,
-	})
-
-	var (
-		outputs int
-		race    string
-	)
-	_, err := agent.Stream(context.Background(), userText(), StreamCallbacks{
-		OnToolOutput: func(_ string, _ []ContentPart, err error, _ uint64) error {
-			outputs++
-			if err != nil {
-				race = err.Error()
-			}
-			return nil
-		},
-	})
-	if err == nil {
-		t.Fatal("Stream error = nil, want the panic reported")
-	}
-	if outputs != 0 {
-		t.Errorf("OnToolOutput ran %d times, want 0: a panic produces no result", outputs)
-	}
-	if race != "" {
-		t.Errorf("a tool result carried the panic: %q", race)
 	}
 }
