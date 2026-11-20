@@ -322,10 +322,12 @@ kernel answers while its application never does: rare, visible in that server's
 own logs, and `:cancel` ends it. Should it ever become necessary, the shape that
 cannot misfire is an opt-in limit (0 = off) or a notify-only watchdog that
 reports the silence without failing the request; `http.Client.Timeout` is the
-one thing not to reach for, since it cuts a long generation mid-answer. Note
-that `internal/llm/providers/proxy.go` builds a zero-value `http.Transport`, so
-the proxy path has no connect, handshake or idle limit at all — the first place
-to look if a hang is ever reported behind a proxy.
+one thing not to reach for, since it cuts a long generation mid-answer. A proxy is
+not an exception to those bounds: `internal/llm/providers/proxy.go` clones
+`DefaultTransport` and changes only how the endpoint is reached, so a proxy that
+is gone fails like an endpoint that is gone — and the SOCKS5 branch, the one place
+the dial function itself must be replaced, dials the proxy with
+`DefaultTransport`'s own dial function rather than with numbers of its own.
 
 ## Error Recovery
 
