@@ -239,6 +239,20 @@ for all in-flight tool goroutines to terminate before returning**:
 This guarantees `Stream()` never returns while a tool goroutine is still
 alive, preventing goroutine leaks and post-error side effects.
 
+**A panic in a tool ends the step, not the process.** In concurrent mode a call
+runs on a goroutine of its own, where the recover in `streamEvents` — the one
+that exists so a bug cannot take content the user already watched — cannot see
+it, and the runtime answers an unrecovered panic by ending the process, taking
+the conversation with it. So the wrapper both drivers go through (`callTool`)
+recovers, and the panic becomes the step's failure: `agent: panic in tool "<name>":
+<value>` plus the stack, reported like any other failed step, with the usual
+salvage underneath. It deliberately does not become a tool *result*: a result is
+model-visible text that enters history and is re-sent on every later request, and
+a stack there would follow the conversation around while telling the model
+nothing it can act on. Nothing about it is retried or resumed — see
+[error-handling.md](error-handling.md#a-cut-stream-is-resumed-not-re-sent), where
+a failure that is this program's own is the one class neither answer covers.
+
 The serial mode needs none of that machinery and inherits its guarantees
 instead: no goroutine is ever started, so there is nothing to wait for, and a
 stream that errors before the driver runs leaves no side effect at all. What

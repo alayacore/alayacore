@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"sync"
 )
 
@@ -48,8 +49,9 @@ type toolRunner interface {
 
 	// finish runs whatever has not run yet and returns every result the step
 	// produced. A non-nil error means the step was cut short with calls
-	// outstanding; the results produced up to that point come back with it, so
-	// salvage can record the side effects that really happened.
+	// outstanding, or that a call failed this program rather than itself (a
+	// panic, see callTool); the results produced up to that point come back with
+	// it, so salvage can record the side effects that really happened.
 	finish(ctx context.Context) ([]ContentPart, error)
 }
 
@@ -69,7 +71,13 @@ func (a *Agent) newToolRunner(callbacks StreamCallbacks, resultCh chan ContentPa
 	if a.config.SerialToolCalls {
 		return &serialToolRunner{agent: a, callbacks: callbacks}
 	}
-	return &parallelToolRunner{agent: a, callbacks: callbacks, resultCh: resultCh, wg: wg}
+	return &parallelToolRunner{
+		agent:     a,
+		callbacks: callbacks,
+		resultCh:  resultCh,
+		wg:        wg,
+		failures:  make(chan error, 1),
+	}
 }
 
 // queuedCall is a tool call the serial driver has accepted but not started.
@@ -114,7 +122,10 @@ func (r *serialToolRunner) add(_ context.Context, tc *ToolInputPart, historyID u
 func (r *serialToolRunner) finish(ctx context.Context) ([]ContentPart, error) {
 	results := make([]ContentPart, 0, len(r.queue))
 	for _, q := range r.queue {
-		result, ran := r.agent.runToolCall(ctx, q.part, q.historyID, r.callbacks)
+		result, ran, err := r.agent.callTool(ctx, q.part, q.historyID, r.callbacks)
+		if err != nil {
+			return results, err
+		}
 		if ran {
 			results = append(results, result)
 		}
@@ -149,6 +160,12 @@ type parallelToolRunner struct {
 	// arrive; the deferred cancel settles the goroutines and salvage recovers
 	// whatever did.
 	launched int
+
+	// failures carries a call that panicked. One slot, because the first program
+	// failure ends the step and a second must not block the goroutine that would
+	// report it: a blocked sender would keep toolWg from settling, and the step
+	// would hang instead of failing.
+	failures chan error
 }
 
 func (r *parallelToolRunner) add(ctx context.Context, tc *ToolInputPart, historyID uint64) {
@@ -156,10 +173,24 @@ func (r *parallelToolRunner) add(ctx context.Context, tc *ToolInputPart, history
 	r.wg.Add(1)
 	go func() {
 		defer r.wg.Done()
-		if result, ran := r.agent.runToolCall(ctx, tc, historyID, r.callbacks); ran {
+		result, ran, err := r.agent.callTool(ctx, tc, historyID, r.callbacks)
+		if err != nil {
+			r.fail(err)
+			return
+		}
+		if ran {
 			sendToolResult(ctx, r.resultCh, result)
 		}
 	}()
+}
+
+// fail records a program failure for finish. Non-blocking by design: see the
+// field's comment.
+func (r *parallelToolRunner) fail(err error) {
+	select {
+	case r.failures <- err:
+	default:
+	}
 }
 
 func (r *parallelToolRunner) finish(ctx context.Context) ([]ContentPart, error) {
@@ -168,6 +199,12 @@ func (r *parallelToolRunner) finish(ctx context.Context) ([]ContentPart, error) 
 		select {
 		case result := <-r.resultCh:
 			results = append(results, result)
+		case err := <-r.failures:
+			// A call that panicked sends no result, so the count can never be
+			// reached: this case is what ends the wait, and it says what
+			// happened instead of letting the step look like a call whose
+			// result is missing.
+			return results, err
 		case <-ctx.Done():
 			return results, ctx.Err()
 		}
@@ -190,6 +227,34 @@ func (r *parallelToolRunner) finish(ctx context.Context) ([]ContentPart, error) 
 // dispatch and the unknown-tool path are cheaper to pin at that boundary than by
 // composing a whole stream.
 // ────────────────────────────────────────────────────────────────────────────
+
+// callTool runs one tool call and turns a panic into this program's error instead
+// of letting it end the process.
+//
+// A tool call runs on its own goroutine in the default mode, where no defer of the
+// stream loop can reach it: a bug in a tool — or in a callback into the session
+// that the call passes through, the confirmation wait and the output frame
+// included — used to kill the process, and with it the conversation the user was
+// in the middle of. streamEvents already refuses to let a panic take content the
+// user watched (see its recover); a tool is the same event one layer down, and it
+// gets the same answer: the step ends and reports it, the stack goes into the
+// error because recovering is what hides it, and what the step had already
+// recorded is salvaged exactly as for any other failed step.
+//
+// A panic deliberately does not become a tool *result*. A result is
+// model-visible text that enters history and is re-sent on every later request,
+// so a stack in it would follow the conversation around; and the model has no use
+// for it — the report the user needs is the one on their screen.
+func (a *Agent) callTool(ctx context.Context, tc *ToolInputPart, historyID uint64, callbacks StreamCallbacks) (part ContentPart, ran bool, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			part, ran = nil, false
+			err = fmt.Errorf("agent: panic in tool %q: %v\n%s", tc.Name, r, debug.Stack())
+		}
+	}()
+	part, ran = a.runToolCall(ctx, tc, historyID, callbacks)
+	return part, ran, nil
+}
 
 // runToolCall is the whole life of one tool call: ask for confirmation when the
 // tool needs it, execute, and produce the part that answers the call. It is the
