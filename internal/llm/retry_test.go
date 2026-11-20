@@ -15,13 +15,14 @@ import (
 	"time"
 )
 
-// timeoutErr satisfies net.Error with Timeout() true, standing in for a
-// transport read/connect deadline.
+// timeoutErr stands in for net's own timeoutError, with the Is method that makes
+// net report a dialer deadline as context.DeadlineExceeded (see IsRetryable).
 type timeoutErr struct{}
 
-func (timeoutErr) Error() string   { return "i/o timeout" }
-func (timeoutErr) Timeout() bool   { return true }
-func (timeoutErr) Temporary() bool { return true }
+func (timeoutErr) Error() string     { return "i/o timeout" }
+func (timeoutErr) Timeout() bool     { return true }
+func (timeoutErr) Temporary() bool   { return true }
+func (timeoutErr) Is(err error) bool { return err == context.DeadlineExceeded }
 
 func TestIsRetryable(t *testing.T) {
 	cases := []struct {
@@ -54,7 +55,15 @@ func TestIsRetryable(t *testing.T) {
 		{"401 permanent", &APIError{StatusCode: 401}, false},
 		{"403 permanent", &APIError{StatusCode: 403}, false},
 		{"canceled (wrapped)", fmt.Errorf("provider stream failed: %w", context.Canceled), false},
+		// False for where it is, not for what it is: a bare sentinel never
+		// reached the transport.
 		{"deadline", context.DeadlineExceeded, false},
+		// The transport's own deadlines, which the guard above must not catch: a
+		// connect that met the dialer's deadline, a resolver that could not answer
+		// this second, and a per-attempt deadline that expired inside the request.
+		{"dial timeout", &url.Error{Op: "Post", URL: "http://192.168.3.233:9999/v1/chat/completions", Err: &net.OpError{Op: "dial", Net: "tcp", Err: timeoutErr{}}}, true},
+		{"deadline inside the transport", &url.Error{Op: "Post", URL: "http://x/v1", Err: context.DeadlineExceeded}, true},
+		{"resolver timed out", &url.Error{Op: "Post", URL: "http://model.lan/v1", Err: &net.OpError{Op: "dial", Net: "tcp", Err: &net.DNSError{Err: "i/o timeout", Name: "model.lan", IsTimeout: true, UnwrapErr: timeoutErr{}}}}, true},
 		// A transport failure is retried by default, so the shapes below are
 		// samples with field history rather than the set: the vocabulary for
 		// "the answer is not here" is open, and "unlisted errno" pins that a

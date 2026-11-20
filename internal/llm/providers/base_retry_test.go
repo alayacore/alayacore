@@ -198,6 +198,38 @@ func TestStreamMessagesConnectionRefusedIsRetryable(t *testing.T) {
 	}
 }
 
+// An endpoint that never answers: the dialer's deadline is real and already
+// past, so the error is net's and no packet is sent. Nothing in the classifier
+// may refuse it.
+func TestStreamMessagesDialTimeoutIsRetryable(t *testing.T) {
+	client := &http.Client{Transport: &http.Transport{
+		DialContext: (&net.Dialer{Timeout: time.Nanosecond}).DialContext,
+	}}
+	p, err := NewOpenAI(BaseConfig{APIKey: "k", BaseURL: "http://127.0.0.1:1", HTTPClient: client})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = p.StreamMessages(context.Background(),
+		[]llm.ContentPart{&llm.TextPart{
+			Text:            "hi",
+			ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser},
+		}}, nil, "", "")
+
+	if err == nil {
+		t.Fatal("StreamMessages error = nil, want a dial timeout")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error = %v, want the dialer's deadline", err)
+	}
+	if !strings.Contains(err.Error(), "failed to send request:") || !strings.Contains(err.Error(), "i/o timeout") {
+		t.Fatalf("error = %v, want the provider's `failed to send request: … i/o timeout`", err)
+	}
+	if !llm.IsRetryable(err) {
+		t.Fatalf("IsRetryable(%v) = false, want true: an endpoint that never answered is transient", err)
+	}
+}
+
 // A non-200 response must arrive as a typed *llm.APIError carrying the status
 // and the Retry-After hint, so the agent can decide structurally whether to
 // re-send.

@@ -185,13 +185,30 @@ is closed and small, so that is what gets written down: a certificate that does
 not verify, an https URL answered by a plain-HTTP server, and a name that does
 not resolve — plus anything that never reached the transport at all, which is
 structural to detect because `http.Client` wraps everything it returns in
-`*url.Error`. The price is stated once: a wrong port or host now costs the budget
-— three notices, about seven seconds — before reporting the same error, which is
-the accepted price of a local model server that is restarting.
-`context.Canceled`/`context.DeadlineExceeded` are never retried, and a cancel
-that beats its own connection error is reported as the cancellation (no notice) —
-including on the last attempt, where the budget has already run out: what the
-user did outranks the transport error the budget happened to end on.
+`*url.Error`. The price is stated once: a wrong port costs the budget — three
+notices, about seven seconds — and a host that never answers the same three at
+30s apiece, about two minutes. Both are the accepted price of a local model
+server that is restarting.
+
+A `context.Canceled` is never retried, and a cancel that beats its own connection
+error is reported as the cancellation (no notice) — including on the last
+attempt, where the budget has already run out: what the user did outranks the
+transport error the budget happened to end on.
+
+A deadline is not in that list, because the error cannot say whose it was. net's
+`errTimeout` — the `i/o timeout` of a connect nobody answered — reports
+`Is(context.DeadlineExceeded)` whatever set the deadline, and `mapErr` folds the
+caller's into the same value. Refusing the name refused every connect that met
+the dialer's own deadline, which is what a model server that stopped answering
+produces: the field saw `provider connection failed — retrying in 1s (retry
+1/3)`, then `dial tcp 192.168.3.233:9999: i/o timeout`, and no second retry.
+Whose deadline it was is a fact about the context, so the context is asked, by
+the layer that holds it: `sendWithRetry` checks `ctx.Err()` before it classifies,
+and a caller that gave up is reported as the cancellation. What reaches the
+classifier is then an attempt that got no answer — re-sent like any transport
+failure, which now covers a resolver that timed out and a per-attempt deadline
+inside the request — or a bare `context.DeadlineExceeded`, refused because it
+never reached the transport.
 
 One shape still needs the argument spelled out, because its name says the
 opposite. `net.ErrClosed` means a socket was written to after it was closed, and
@@ -373,11 +390,12 @@ Automatic retry is tested in `internal/llm/retry_test.go`,
 
 | Test | Verifies |
 |------|----------|
-| `TestIsRetryable` | Every status code in (and out of) the retryable set; cancel/deadline are not retried; a transport failure is retried, including an errno the classifier does not name, while a bad certificate, an https URL answered by plain HTTP, a name that does not resolve and an error that never reached the transport are not |
+| `TestIsRetryable` | Every status code in (and out of) the retryable set; a cancel is never retried; a deadline is decided by where it came from — the transport's dial or resolver deadline is re-sent, a bare sentinel is not; a transport failure is retried, including an errno the classifier does not name, while a bad certificate, an https URL answered by plain HTTP, a name that does not resolve and an error that never reached the transport are not |
 | `TestRetryReason` | The user-facing notice text: 425, 429, the gateway family, 529, other statuses, the one wording every connection failure shares, and the two stream failures — ended early (nothing recorded) and was cut off (a cut step being resumed) |
 | `TestRetryDelay` | Exponential backoff, `Retry-After` wins, both capped (no overflow) |
 | `TestAgentRetriesTransientThenSucceeds` | 429 then 503 then success: 3 calls, 2 notices with correct numbering |
-| `TestAgentRetriesConnectionFailure` | `failed to send request: Post "...": EOF` and `readfrom ...: write ...: use of closed network connection` are both retried and announced as `provider connection failed` |
+| `TestAgentRetriesConnectionFailure` | `failed to send request: Post "...": EOF`, `readfrom ...: write ...: use of closed network connection` and a dial timeout are all retried and announced as `provider connection failed` |
+| `TestAgentCallerDeadlineIsNotRetried` | The other half of the deadline rule: the same dial timeout with an expired caller deadline is reported as `context.DeadlineExceeded`, one call, no notice |
 | `TestAgentCanceledConnectionFailureIsNotRetried` | A cancel that beats the connection error is reported as `context.Canceled`, with no re-send and no notice |
 | `TestAgentCancelOnLastAttemptReportsCancellation` | A cancel landing on the last attempt is reported as `context.Canceled` too, not as the transport error the spent budget ended on |
 | `TestAgentRetriesStreamThatRecordedNothing` | A stream error from an attempt that recorded nothing is re-sent and announced as `provider stream ended early`, with the step announced once — and the error is a bare `io.EOF`, which the classifier alone would refuse |
@@ -402,6 +420,7 @@ Automatic retry is tested in `internal/llm/retry_test.go`,
 | `TestStreamMessagesConnectionClosedBeforeResponseIsRetryable` | A server that closes the connection without responding produces an error `llm.IsRetryable` accepts — over a real socket, not a hand-built error |
 | `TestStreamMessagesPeerGoneWhileSendingBodyIsRetryable` | The same peer event while the request body is still going out — small body (`EOF`) and whole-conversation body (the field's `use of closed network connection`) both stay retryable, over a real socket |
 | `TestStreamMessagesConnectionRefusedIsRetryable` | A provider that is not listening yet — a local server mid-restart — produces a refused connect `llm.IsRetryable` accepts, over a real socket |
+| `TestStreamMessagesDialTimeoutIsRetryable` | The field's `dial tcp …: i/o timeout` reaches `llm.IsRetryable` as transient — a real dialer whose deadline is already past, so no packet is sent |
 
 ## Error Message Construction (`fmt.Errorf` Chaining)
 

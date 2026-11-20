@@ -133,11 +133,18 @@ var (
 // identical request, the same tokens plus a human. See docs/error-handling.md,
 // "Automatic Retry of Transient Failures".
 func IsRetryable(err error) bool {
-	if err == nil ||
-		errors.Is(err, context.Canceled) ||
-		errors.Is(err, context.DeadlineExceeded) {
-		// The caller gave up or its deadline passed; re-sending would fight
-		// the cancellation instead of respecting it.
+	// A cancel is a decision rather than a transport answer, whichever layer made
+	// it: net's own "operation was canceled" satisfies Is(context.Canceled) too.
+	//
+	// A deadline is absent from this guard on purpose. net's errTimeout — the
+	// `i/o timeout` of a connect nobody answered — reports
+	// Is(context.DeadlineExceeded) whatever set the deadline, so refusing the name
+	// refuses the dialer's own deadline as well: the field's `dial tcp …: i/o
+	// timeout` was read as "the caller gave up". Whose deadline it was is a fact
+	// about the context, so the caller asks its own — sendWithRetry checks ctx.Err()
+	// before it calls this — and a bare context.DeadlineExceeded is still refused
+	// below, because it never reached the transport.
+	if err == nil || errors.Is(err, context.Canceled) {
 		return false
 	}
 	// A cut stream already delivered content. Re-sending it would duplicate what

@@ -234,6 +234,15 @@ func TestAgentRetriesConnectionFailure(t *testing.T) {
 			Err: &net.OpError{Op: "readfrom", Net: "tcp", Err: &net.OpError{Op: "write", Net: "tcp", Err: net.ErrClosed}},
 		})
 	})
+	// The third costume: nothing answers at all, so the dialer's own deadline
+	// expires.
+	t.Run("dial timeout", func(t *testing.T) {
+		testAgentRetriesConnectionFailure(t, &url.Error{
+			Op:  "Post",
+			URL: "http://192.168.3.233:9999/v1/chat/completions",
+			Err: &net.OpError{Op: "dial", Net: "tcp", Err: timeoutErr{}},
+		})
+	})
 }
 
 func testAgentRetriesConnectionFailure(t *testing.T, shape error) {
@@ -279,6 +288,34 @@ func TestAgentCanceledConnectionFailureIsNotRetried(t *testing.T) {
 	}
 	if p.calls != 1 {
 		t.Fatalf("provider calls = %d, want 1 (no re-send after cancel)", p.calls)
+	}
+	if len(p.notices) != 0 {
+		t.Fatalf("retry notices = %d, want 0", len(p.notices))
+	}
+}
+
+// The other half of the deadline rule, which the classifier cannot answer: the
+// same dial timeout with a caller whose deadline has passed is the caller's
+// decision, so it is reported as one — one call, no notice.
+func TestAgentCallerDeadlineIsNotRetried(t *testing.T) {
+	fastRetries(t)
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+
+	dialTimeout := fmt.Errorf("failed to send request: %w", &url.Error{
+		Op:  "Post",
+		URL: "http://192.168.3.233:9999/v1/chat/completions",
+		Err: &net.OpError{Op: "dial", Net: "tcp", Err: timeoutErr{}},
+	})
+	p := &retryScriptProvider{failures: []error{dialTimeout, dialTimeout}}
+	agent := NewAgent(AgentConfig{Provider: p, MaxSteps: 3})
+
+	_, err := agent.Stream(ctx, userText(), StreamCallbacks{OnRetry: p.onRetry})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error = %v, want context.DeadlineExceeded", err)
+	}
+	if p.calls != 1 {
+		t.Fatalf("provider calls = %d, want 1 (no re-send after the caller's deadline)", p.calls)
 	}
 	if len(p.notices) != 0 {
 		t.Fatalf("retry notices = %d, want 0", len(p.notices))
