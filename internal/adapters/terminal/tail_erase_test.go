@@ -1,16 +1,26 @@
 package terminal
 
-// The tail erase is the one place the frame writes BELOW the rows it draws, and
-// it used to name a column that does not exist: `CUP(last row, width+1)` followed
-// by ED0. That is not a no-op. A host that clamps the out-of-range column — which
-// conhost does, and tmux does (screen_tmux_tail_erase_test.go) — lands the cursor
-// ON the last column, and the ED then erases that cell instead of starting after
-// it. The status row is what made it visible: its right-hand group is
-// right-aligned flush to the edge (tui_status.go → assembleStatusLeft), so it is
-// exactly `width` cells wide and its last cell is a CHARACTER — the "1" in "R1".
+// The frame writes two erases after rows it has drawn, and both used to land on a
+// cell the frame had just filled.
 //
-// These two tests are the pair that keeps the shape: the column is inside the
-// screen, and a full-width last row survives a repaint of itself.
+//   - the tail erase, `CUP(last row, width+1)` + ED0, which named a column that
+//     does not exist;
+//   - the EL that ends a written row, which after a row that fills the width falls
+//     on that row's own last cell.
+//
+// Neither is a no-op on the hosts that matter. A host that clamps the
+// out-of-range column — conhost does, and tmux does
+// (screen_tmux_tail_erase_test.go) — puts the cursor ON the last column and then
+// erases it; a host that keeps the cursor there after a full row erases the
+// character the row ended with, while one that moves it past the end erases
+// nothing. The status row is what made it visible: its right-hand group is
+// right-aligned flush to the edge (tui_status.go → assembleStatusLeft), so the row
+// is exactly `width` cells wide — and the prompt box's bottom rule, which is
+// `strings.Repeat("─", width)`, lost its last cell the same way while the top rule
+// (no EL after it) kept its own.
+//
+// The tests below are the pair that keeps the shape: the cell an erase names
+// exists, and a row that fills the width keeps what it drew.
 
 import (
 	"bytes"
@@ -160,5 +170,93 @@ func TestTailEraseStartsOnTheTailWhenThereIsOne(t *testing.T) {
 	if cups[len(cups)-1] != want {
 		t.Errorf("tail erase started at %v, want %v (the cell after the row's text):\n  %q",
 			cups[len(cups)-1], want, buf.String())
+	}
+}
+
+// TestFillsLastColumn pins the rule both erases share: a write that ends on the
+// last column leaves the cursor there, so the next erase would take a cell the
+// frame drew.
+func TestFillsLastColumn(t *testing.T) {
+	for _, tc := range []struct {
+		cells, width int
+		want         bool
+		why          string
+	}{
+		{0, 80, false, "an empty row is cleared from its first column"},
+		{1, 80, false, "one cell leaves a tail"},
+		{79, 80, false, "one cell short leaves a tail"},
+		{80, 80, true, "exactly full: the EL would land on the last cell"},
+		{160, 80, true, "a soft-wrap run whose last row is full"},
+		{81, 80, false, "the wrap moved it: the last row has a tail"},
+		{5, 0, false, "unknown width: there is no boundary to be past"},
+	} {
+		if got := fillsLastColumn(tc.cells, tc.width); got != tc.want {
+			t.Errorf("fillsLastColumn(%d, %d) = %v, want %v (%s)",
+				tc.cells, tc.width, got, tc.want, tc.why)
+		}
+	}
+}
+
+// TestEraseTailAfterMeasuresOnlyTheLastRow: the erase follows a written block, so
+// the row it would land on is the block's LAST one — a short box whose last rule
+// fills the width gets no EL, whatever its other rows measure.
+func TestEraseTailAfterMeasuresOnlyTheLastRow(t *testing.T) {
+	const width = 20
+	full := strings.Repeat("─", width)
+
+	if got := eraseTailAfter("short row", width); got != "\x1b[K" {
+		t.Errorf("eraseTailAfter on a short row = %q, want an EL", got)
+	}
+	if got := eraseTailAfter(full, width); got != "" {
+		t.Errorf("eraseTailAfter on a full row = %q, want nothing", got)
+	}
+	if got := eraseTailAfter("short row\n"+full, width); got != "" {
+		t.Errorf("eraseTailAfter with a full LAST row = %q, want nothing", got)
+	}
+	if got := eraseTailAfter(full+"\nshort", width); got != "\x1b[K" {
+		t.Errorf("eraseTailAfter with a short LAST row = %q, want an EL", got)
+	}
+}
+
+// TestTheFrameKeepsEveryFullRowsLastCharacter is the consequence, on the frame the
+// real builders produce: paint a 120-column view into the terminal model and every
+// row that is exactly the terminal width must still hold the character it ended
+// with. Before the rule, the status row's trailing "R1" came back as "R" and the
+// prompt box's bottom rule lost its last "─" — the two rows a Windows console
+// showed a blank column in.
+func TestTheFrameKeepsEveryFullRowsLastCharacter(t *testing.T) {
+	const width, height = 120, 24
+	m := testTUISized(width)
+	// A session's status right group: the model name is what pushes the row out
+	// to the last column, which is where the character that went missing was.
+	m.statusLeft = "2.8K/1M 0.3% | 242.6 tok/s (ttft 0.3s) | 4/INF"
+	m.statusRight = "DeepSeek / DeepSeek-Flash | R1"
+	content := m.View().Content
+
+	// The host's own newline handling, as Screen.Render does for a full frame.
+	grid := applyFrame(nil, strings.ReplaceAll(content, "\n", "\r\n"), width)
+
+	checked := 0
+	for _, r := range positionedRows(content, width) {
+		if r.cells != width || r.frameRow.row >= len(grid) {
+			continue
+		}
+		plain := stripANSI(r.frameRow.text)
+		runes := []rune(plain)
+		if len(runes) == 0 {
+			continue
+		}
+		want := runes[len(runes)-1]
+		if want == ' ' {
+			continue // a padded row: nothing at its end to lose
+		}
+		if got := grid[r.frameRow.row][width-1]; got != want {
+			t.Errorf("row %d is %d cells wide and ends with %q, but the last column holds %q after painting:\n  %q",
+				r.frameRow.row, r.cells, string(want), string(got), plain)
+		}
+		checked++
+	}
+	if checked == 0 {
+		t.Fatalf("no row of the %dx%d frame fills the width, so this test checks nothing", width, height)
 	}
 }

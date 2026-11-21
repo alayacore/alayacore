@@ -145,8 +145,13 @@ func TestRenderVirtualScrolledIntoWindowPinsItsLine(t *testing.T) {
 	if w := cellWidth(out); w != 3*40 {
 		t.Errorf("fragment display width = %d, want %d (3 rows × 40)", w, 3*40)
 	}
-	if !strings.HasSuffix(raw, "\x1b[K") {
-		t.Errorf("fragment must end with an EL erase, got %q", raw)
+	// The fragment's last row is exactly the width, so it has no tail and the
+	// frame must erase nothing after it: an EL there falls on the cell the row
+	// just drew, and a host that keeps the cursor there (conhost) erases it —
+	// the fragment would come back one character short (screen.go →
+	// fillsLastColumn).
+	if strings.HasSuffix(raw, "\x1b[K") {
+		t.Errorf("fragment erased after a last row that fills the width, got %q", raw)
 	}
 	// The body is the 9th through 24th words: content rows 1 and 2 of the
 	// long line (row 0 — the first eight words — is the displaced row).

@@ -460,6 +460,13 @@ func parseCUP(seq string) (row, col int, ok bool) {
 type positionedRow struct {
 	frameRow
 	terminalRows int
+
+	// cells is the row's display width, measured by the same call that decided
+	// terminalRows. It is kept rather than recomputed because the question the
+	// row diff asks of it — does an EL after this write land on a cell the frame
+	// just drew (fillsLastColumn) — would otherwise cost a second measure of the
+	// same text, and for a soft-wrapped logical line that is the whole message.
+	cells int
 }
 
 // positionedRows parses a frame and assigns every base row its TERMINAL
@@ -489,30 +496,31 @@ func positionedRows(content string, width int) []positionedRow {
 		pr := positionedRow{frameRow: r, terminalRows: 1}
 		if r.base {
 			pr.frameRow.row = term
-			pr.terminalRows = baseTerminalRows(r.text, width)
+			pr.cells = cellWidth(r.text)
+			pr.terminalRows = rowsForCells(pr.cells, width)
 			term += pr.terminalRows
 		} else {
-			pr.terminalRows = baseTerminalRows(r.text, width)
+			pr.cells = cellWidth(r.text)
+			pr.terminalRows = rowsForCells(pr.cells, width)
 		}
 		out = append(out, pr)
 	}
 	return out
 }
 
-// baseTerminalRows returns the number of terminal rows a base logical row
-// occupies at the given width (its soft-wrap count). A blank row still
-// occupies one row; a row whose display width exceeds the width wraps to
-// ceil(width/terminalWidth) rows. With an unknown width (0) every row
-// counts as one — the pre-soft-wrap behavior (rows that fit are 1:1).
-func baseTerminalRows(text string, width int) int {
-	if width <= 0 {
+// rowsForCells returns the number of terminal rows a logical row `cells` cells
+// wide occupies at the given width (its soft-wrap count). A blank row still
+// occupies one row; a row wider than the width wraps to ceil(cells/width) rows.
+// With an unknown width (0) every row counts as one — the pre-soft-wrap behavior
+// (rows that fit are 1:1).
+//
+// It takes the count rather than the text because its one caller measures it
+// anyway, to answer the other question about the same row (fillsLastColumn).
+func rowsForCells(cells, width int) int {
+	if width <= 0 || cells <= 0 {
 		return 1
 	}
-	w := cellWidth(text)
-	if w <= 0 {
-		return 1
-	}
-	return (w + width - 1) / width
+	return (cells + width - 1) / width
 }
 
 // lastBaseTerminalRow returns the last sequential base row positioned at
@@ -753,7 +761,11 @@ func diffFrameRows(oldContent, newContent string, width int) []byte {
 			// boundaries, like the full-render path does.
 			buf = append(buf, ansi.CursorPosition(1, base.frameRow.row+1)...)
 			buf = append(buf, base.frameRow.text...)
-			buf = append(buf, ansi.EraseLine(0)...)
+			// The run's last row is the one an EL would land on; a run whose
+			// rows are all full has no tail to clear (fillsLastColumn).
+			if !fillsLastColumn(base.cells, width) {
+				buf = append(buf, ansi.EraseLine(0)...)
+			}
 			// Draw the line's overlay layers (frame order, later on top).
 			for r := base.frameRow.row; r < base.frameRow.row+base.terminalRows; r++ {
 				for _, ov := range overlaysByRow[r] {
@@ -781,7 +793,9 @@ func diffFrameRows(oldContent, newContent string, width int) []byte {
 			if ok && ov.frameRow.col == 0 {
 				buf = append(buf, ansi.CursorPosition(1, ov.frameRow.row+1)...)
 				buf = append(buf, ov.frameRow.text...)
-				buf = append(buf, ansi.EraseLine(0)...)
+				if !fillsLastColumn(ov.cells, width) {
+					buf = append(buf, ansi.EraseLine(0)...)
+				}
 				// Skip the run's own terminal rows — but not one where a
 				// DIFFERENT overlay row starts. Consecutive box rows of an
 				// overlay that does not fit the terminal each wrap onto the
@@ -804,10 +818,19 @@ func diffFrameRows(oldContent, newContent string, width int) []byte {
 		// Restore the base segment (or clear the row when no base covers
 		// it) — this also erases any shrunk layer's old tail.
 		buf = append(buf, ansi.CursorPosition(1, row+1)...)
+		cells := 0
 		if text, ok := baseRowTextAt(newRows, width, row); ok {
 			buf = append(buf, text...)
+			// Every soft-wrapped base was handled above and its rows skipped,
+			// so a base covering this row is one visual row: its own count is
+			// the count of what was just written.
+			if base, ok := baseRowAt(newRows, row); ok {
+				cells = base.cells
+			}
 		}
-		buf = append(buf, ansi.EraseLine(0)...)
+		if !fillsLastColumn(cells, width) {
+			buf = append(buf, ansi.EraseLine(0)...)
+		}
 		// Draw the row's overlay layers in frame order (later on top).
 		for _, r := range overlaysByRow[row] {
 			buf = append(buf, ansi.CursorPosition(r.frameRow.col+1, row+1)...)
@@ -936,6 +959,45 @@ func tailErase(lr frameRow, width, height int) string {
 		return ansi.CursorPosition(1, lr.row+2) + ansi.EraseDisplay(0)
 	}
 	return ""
+}
+
+// fillsLastColumn reports whether `cells` cells written from a row's first column
+// end on its last one.
+//
+// It is the test every EL that follows a written row has to pass, and the reason
+// is the same one tailErase gives: an EL erases from the CURSOR, and after a write
+// that fills the row the cursor is not "after the text" — it sits ON the last cell,
+// held there by the deferred wrap. A host that keeps it there (conhost) erases the
+// character the frame just drew; a host that moves it past the end (xterm, VTE,
+// tmux) erases nothing. The frame must not depend on which, so a row with nothing
+// left to erase gets no EL — confirm_dialog.go's description run has been written
+// that way all along, and this is the same rule named once for the rest.
+//
+// cells == 0 is not a full row: an empty row is cleared FROM its first column, so
+// the EL erases it, which is what a row with no base text wants. A width of 0 (a
+// Screen a test built by hand) keeps the EL: there is no boundary to be past.
+func fillsLastColumn(cells, width int) bool {
+	return width > 0 && cells > 0 && cells%width == 0
+}
+
+// eraseTailAfter returns the EL that clears what a written block does not cover —
+// or nothing, when its last row already reaches the last column (see
+// fillsLastColumn). block is the text just written, escapes included; a block of
+// several rows is measured by its LAST row, which is the one the EL would land on.
+//
+// The measurement is one strip of at most a screen width. These are the rows a
+// frame anchors itself — a live edge, a box rule, a status bar, a window's own
+// line — not the per-row measurement the padding path deliberately does without
+// (wrap.go → visualLine.Pad): a caller that already has the count (screen.go →
+// positionedRow.cells) uses fillsLastColumn directly instead.
+func eraseTailAfter(block string, width int) string {
+	if i := strings.LastIndexByte(block, '\n'); i >= 0 {
+		block = block[i+1:]
+	}
+	if fillsLastColumn(cellWidth(block), width) {
+		return ""
+	}
+	return ansi.EraseLine(0)
 }
 
 // containsCUP reports whether content draws rows with absolute cursor

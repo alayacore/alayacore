@@ -347,6 +347,18 @@ func countPadded(rows []visualLine) int {
 // would leave the frame writing no spaces after a row that still needs them, and the
 // row-level checks above would not see it — they check the rows a window holds, and
 // the copy is what the frame holds.
+// wantTailErase is the test's own statement of when the frame erases after a row:
+// only when the row has a tail to erase. A row that already reaches the last
+// column does not — and the EL would land on the cell the row just drew, which
+// conhost erases (screen.go → fillsLastColumn). Written from the measurement here
+// rather than by calling the frame's helper, so the rule is stated twice.
+func wantTailErase(row string, width int) string {
+	if w := cellWidth(row); w > 0 && w%width == 0 {
+		return ""
+	}
+	return "\x1b[K"
+}
+
 func TestFrameWritesThePaddingARowAsksFor(t *testing.T) {
 	// Odd, so a two-cell cluster straddles the break and the row before it asks
 	// for the one space that brings it up to the width.
@@ -413,10 +425,10 @@ func TestFrameWritesThePaddingARowAsksFor(t *testing.T) {
 					case i < len(rows)-1 && rows[i+1].Cont:
 						b.WriteString(strings.Repeat(" ", wantPad(vl.Text, width)))
 					case i < len(rows)-1:
-						b.WriteString("\x1b[K")
+						b.WriteString(wantTailErase(vl.Text, width))
 					}
 				}
-				b.WriteString("\x1b[K")
+				b.WriteString(wantTailErase(rows[len(rows)-1].Text, width))
 				want := b.String()
 
 				if !strings.HasPrefix(frame, want) {

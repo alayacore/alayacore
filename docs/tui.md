@@ -1169,6 +1169,20 @@ still a character short on Windows. `tail_erase_test.go` pins the invariant on t
 emitted bytes (no CUP past the width or the height) and its consequence (a
 full-width last row survives being repainted with one character different).
 
+The same rule reaches the other erase the frame writes, from the other side: an
+**`EL` that ends a written row** erases from the *cursor*, and after a row that
+fills the width the cursor is not past the text — it is on the row's last cell,
+held there by the deferred wrap. So `screen.go` → `fillsLastColumn` /
+`eraseTailAfter` write that `EL` only when the row has a tail to erase, and a row
+that already reaches the last column gets none. This one is not theoretical
+either: on the same Windows console the prompt box's bottom rule (a row of
+`─`) came back with its last cell blank while the box's top rule — no `EL` after
+it — kept every one, and the status row lost the `1` of `R1` the same way. The
+hosts disagree here as well (tmux and xterm/VTE erase nothing at that position,
+conhost erases the cell), so the frame does not ask: residue_simulation_test.go's
+terminal model takes the strict side, which is what makes a frame that leans on
+the lenient one fail in `tail_erase_test.go` instead of on a user's screen.
+
 Window rendering produces **visual line arrays** (`Window.cache.lines`) — one
 element per terminal row. The viewport clips that array; it does not ask for the
 joined string `Window.Render` returns, which is built only when something reads

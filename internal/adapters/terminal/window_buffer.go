@@ -981,7 +981,7 @@ func (wb *WindowBuffer) renderVirtual(windowCursorIndex int, blocked bool) strin
 			// still exactly true.
 			row := w.pinnedLine0(startLine-winStart, windowCursorIndex == i)
 			sb.WriteString(row)
-			sb.WriteString(ansi.EraseLine(0))
+			sb.WriteString(eraseTailAfter(row, wb.width))
 			emittedRows++
 		}
 		// The pin ends its own row, so the newline under it separates it from
@@ -1024,16 +1024,25 @@ func (wb *WindowBuffer) renderVirtual(windowCursorIndex int, blocked bool) strin
 				// Row ending an original line: not padded (copy stays free
 				// of trailing spaces), but erase the row tail — a shorter
 				// row overwriting a longer one from the previous frame
-				// would otherwise leave residue.
-				sb.WriteString(ansi.EraseLine(0))
+				// would otherwise leave residue. A row that already reaches
+				// the last column has no tail, and an EL there would erase
+				// the cell this row just drew (fillsLastColumn).
+				sb.WriteString(eraseTailAfter(vl.Text, wb.width))
 			}
 		}
 		// Clear the fragment's last row to the end of the line: it is not
 		// padded (copy fidelity — no trailing spaces in selections), so
 		// without this erase the overlay renderer would leave the previous
 		// frame's characters on that row's tail (e.g. a short folded line
-		// overwriting a longer row from the frame before).
-		sb.WriteString(ansi.EraseLine(0))
+		// overwriting a longer row from the frame before). A last row that
+		// fills the width has no tail, and the EL would land on the cell it
+		// just drew — the folded summary and the window's own line both end
+		// up exactly the width (fillsLastColumn).
+		if n := len(lines); n > 0 {
+			sb.WriteString(eraseTailAfter(lines[n-1].Text, wb.width))
+		} else {
+			sb.WriteString(ansi.EraseLine(0))
+		}
 		firstWritten = true
 	}
 

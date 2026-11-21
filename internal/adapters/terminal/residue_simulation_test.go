@@ -66,6 +66,7 @@ func applyFrame(grid [][]rune, frame string, width int) [][]rune {
 					clearScreen()
 				} else {
 					ensure()
+					col = clampPendingWrap(col, width)
 					for c := col; c < width; c++ {
 						grid[row][c] = ' '
 					}
@@ -75,6 +76,7 @@ func applyFrame(grid [][]rune, frame string, width int) [][]rune {
 				}
 			case 'K':
 				ensure()
+				col = clampPendingWrap(col, width)
 				for c := col; c < width; c++ {
 					grid[row][c] = ' '
 				}
@@ -119,6 +121,25 @@ func applyFrame(grid [][]rune, frame string, width int) [][]rune {
 		}
 	}
 	return grid
+}
+
+// clampPendingWrap resolves the position an erase acts from when the cursor is
+// past the last column, having just filled the row.
+//
+// This is the one place the model is deliberately STRICTER than the tmux it was
+// taken from. After a write that fills the row the cursor is held on the last cell
+// by the deferred wrap, and the hosts disagree about what an erase does there:
+// tmux and xterm/VTE erase nothing (the position is past the end), conhost erases
+// the cell the frame just drew. The frame must not depend on which — a status bar
+// whose trailing "R1" came back as "R" with a blank column after it on a Windows
+// console is what depending on it cost (screen.go → fillsLastColumn) — so the
+// model takes the strict answer and a frame that leans on the lenient one fails
+// here instead of on a user's screen.
+func clampPendingWrap(col, width int) int {
+	if width > 0 && col >= width {
+		return width - 1
+	}
+	return col
 }
 
 // fmtSscan parses "row;col" into two ints (test helper).

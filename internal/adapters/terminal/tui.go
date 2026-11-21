@@ -973,21 +973,23 @@ func (m Terminal) View() View {
 	if m.screenHeight > 0 && inputBoxY > 0 {
 		sb.WriteString("\n")
 		sb.WriteString(ansi.CursorPosition(1, inputBoxY)) // row inputBoxY-1
-		sb.WriteString(m.renderLiveEdge())
-		sb.WriteString(ansi.EraseLine(0))
+		edge := m.renderLiveEdge()
+		sb.WriteString(edge)
+		sb.WriteString(eraseTailAfter(edge, m.screenWidth))
 	}
 
 	if m.screenHeight > 0 {
 		sb.WriteString("\n")
 		sb.WriteString(ansi.CursorPosition(1, inputBoxY+1))
-		sb.WriteString(m.promptBox.View().Content)
+		box := m.promptBox.View().Content
+		sb.WriteString(box)
 		// The box is the frame's from column 0 as well: clear the tail of the
 		// block's last row (a box shorter than the previous frame's, or a cell
 		// the row above flowed onto it). The box's inner rows are separated by
 		// hard newlines, so a host that bills one of them a different width
 		// cannot merge two of them — the rows below the first are positioned by
 		// the newline and re-anchored by the status bar's CUP.
-		sb.WriteString(ansi.EraseLine(0))
+		sb.WriteString(eraseTailAfter(box, m.screenWidth))
 		sb.WriteString("\n")
 		// Status bar: hard anchor to the last row, cleared to its end for the
 		// same reason. renderStatusBar lays the row out against what a host may
@@ -996,8 +998,9 @@ func (m Terminal) View() View {
 		// scrolls the terminal: the whole frame — including rows the diff will
 		// not rewrite — off by a row until a full repaint.
 		sb.WriteString(ansi.CursorPosition(1, m.screenHeight))
-		sb.WriteString(m.renderStatusBar())
-		sb.WriteString(ansi.EraseLine(0))
+		bar := m.renderStatusBar()
+		sb.WriteString(bar)
+		sb.WriteString(eraseTailAfter(bar, m.screenWidth))
 	}
 
 	baseContent := sb.String()
