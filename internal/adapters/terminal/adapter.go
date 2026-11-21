@@ -92,6 +92,14 @@ func (a *Adapter) Start() int {
 }
 
 // getTerminalSize returns the current terminal size, or defaults if not a TTY.
+//
+// It is a pre-TTY guess and nothing more: this runs before Run opens the terminal,
+// so it can only read the process's stdout — which on Windows may not be the
+// handle the program ends up drawing on (openTTY falls back to CONOUT$ when stdout
+// is not a console). The size the layout uses is the one Run applies before the
+// first frame, measured on the screen the program draws on, and re-read on every
+// tick afterwards (program.go → run, Program.refreshSize). So a piped stdout does
+// not cost the loading screen a wrong first frame.
 func getTerminalSize() (width, height int) {
 	if term.IsTerminal(int(os.Stdout.Fd())) {
 		w, h, err := term.GetSize(int(os.Stdout.Fd()))

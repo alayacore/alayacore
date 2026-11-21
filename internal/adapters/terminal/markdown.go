@@ -228,9 +228,24 @@ func delimiterAlign(c string) mdAlign {
 	}
 }
 
-// splitCells splits a table row into cells on unescaped '|', trimming
-// each cell. The leading '|' is consumed; a trailing '|' produces a
-// trailing empty cell that is dropped. "\|" is an escaped literal pipe.
+// splitCells splits a table row into cells on '|', trimming each cell. The
+// leading '|' is consumed; a trailing '|' produces a trailing empty cell that is
+// dropped.
+//
+// `\|` is the one escape a cell has — it is the only way to put a pipe inside one,
+// which is why this splitter exists at all. Every other backslash is LITERAL, and
+// that is the difference Windows makes unavoidable: a cell holding
+// `C:\Users\me\notes.txt` used to come out as `C:Usersmenotes.txt`, every
+// separator consumed as the escape of the letter after it, `\\host\share` lost a
+// backslash, and a cell ending in `\` lost it whole. Linux paths carry no
+// backslash, so nothing on that side ever showed it.
+//
+// It is deliberately NOT CommonMark's escape set. That set unescapes `\\` and
+// every ASCII punctuation mark, which is right for text an author wrote as
+// markdown — but the text in a cell here is the model's own, sent as content, and
+// this renderer applies no inline syntax to it (no bold, no code spans; see
+// docs/markdown-rendering.md). Unescaping half that set would edit what the model
+// wrote: `\\host\share` is a UNC path, not an escaped backslash.
 func splitCells(line string) []string {
 	line = strings.TrimSpace(line)
 	if !strings.HasPrefix(line, "|") {
@@ -238,22 +253,22 @@ func splitCells(line string) []string {
 	}
 	var cells []string
 	var cur strings.Builder
-	escaped := false
 	flush := func() {
 		cells = append(cells, strings.TrimSpace(cur.String()))
 		cur.Reset()
 	}
-	for _, r := range line[1:] {
-		switch {
-		case escaped:
-			cur.WriteRune(r)
-			escaped = false
-		case r == '\\':
-			escaped = true
-		case r == '|':
+	// Byte-wise rather than by rune, which is exact here: every UTF-8
+	// continuation byte is >= 0x80, so neither '|' nor '\\' can occur inside a
+	// multi-byte rune and copying bytes cannot split one.
+	for i := 1; i < len(line); i++ {
+		switch c := line[i]; {
+		case c == '\\' && i+1 < len(line) && line[i+1] == '|':
+			cur.WriteByte('|')
+			i++ // the escaped pipe is data, not a cell boundary
+		case c == '|':
 			flush()
 		default:
-			cur.WriteRune(r)
+			cur.WriteByte(c)
 		}
 	}
 	flush()

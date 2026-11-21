@@ -93,6 +93,42 @@ func TestRenderMarkdownTables_EscapedPipe(t *testing.T) {
 	}
 }
 
+// TestRenderMarkdownTables_BackslashesAreLiteral: a cell's backslashes are the
+// model's text, not markdown escapes, so a Windows path survives the table
+// transform untouched. It used to lose every separator — `C:\Users\me` came out
+// `C:Usersme`, `\\host\share` came out `\hostshare`, and a cell ending in `\`
+// lost it — which is the one way this renderer damaged content, and invisible on
+// Unix, where a path carries no backslash.
+func TestRenderMarkdownTables_BackslashesAreLiteral(t *testing.T) {
+	in := "| path | what |\n" +
+		"|---|---|\n" +
+		"| `C:\\Users\\me\\notes.txt` | a file |\n" +
+		"| `\\\\host\\share` | a UNC share |\n" +
+		"| `C:\\` | a drive root |"
+	got := renderMarkdownTables(in, 80)
+
+	// The cells first: a regression here damages the text, and a border one
+	// column wide would report it as a table that is merely off.
+	for _, want := range []string{"`C:\\Users\\me\\notes.txt`", "`\\\\host\\share`", "`C:\\`"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("the cell %q did not survive the table transform; got:\n%s", want, got)
+		}
+	}
+
+	want := "┌─────────────────────────┬──────────────┐\n" +
+		"│ path                    │ what         │\n" +
+		"├─────────────────────────┼──────────────┤\n" +
+		"│ `C:\\Users\\me\\notes.txt` │ a file       │\n" +
+		"├─────────────────────────┼──────────────┤\n" +
+		"│ `\\\\host\\share`          │ a UNC share  │\n" +
+		"├─────────────────────────┼──────────────┤\n" +
+		"│ `C:\\`                   │ a drive root │\n" +
+		"└─────────────────────────┴──────────────┘"
+	if got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestRenderMarkdownTables_EmptyCells(t *testing.T) {
 	in := "| a | b | c |\n|---|---|---|\n| 1 || 3 |"
 	want := "┌───┬───┬───┐\n" +

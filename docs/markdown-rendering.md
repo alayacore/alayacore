@@ -217,6 +217,17 @@ of `│`, so the two are distinguishable. This actually *improved* with the grid
 under the previous ASCII framing the border was `|` too, so data and structure
 were the same character.
 
+`\|` is the **only** escape a cell has. Every other backslash is literal, which is
+not a smaller version of CommonMark's rule but a different one: a cell's text is
+the model's own, sent as content, and this transform applies no inline syntax to
+it (no bold, no code spans — see the top of this page), so there are no markdown
+escapes in it to resolve. The rule used to be "a backslash escapes whatever follows
+it", which is where Windows paths went wrong: `C:\Users\me\notes.txt` came out
+`C:Usersmenotes.txt` (every separator consumed), `\\host\share` lost a backslash,
+and a cell ending in `\` lost it whole. A path on Unix carries no backslash, so
+the damage was invisible on the side of the project that had tests.
+`TestRenderMarkdownTables_BackslashesAreLiteral` pins the three shapes.
+
 <!-- @example src=pipes_ascii width=40 -->
 ```
 ┌─────┬─────┐

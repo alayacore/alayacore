@@ -470,6 +470,20 @@ onto a path no runner can exercise, so these are not academic:
 - [ ] Clicking inside the `cmd` window while output is streaming does not freeze
       the UI (the QuickEdit clear).
 - [ ] Dragging the window resizes the layout, in both hosts, within one tick.
+- [ ] **A row that fills the width keeps its last character**, in both hosts. The
+      two rows that showed it were the status bar's right-aligned group (`R1`
+      coming back as `R`) and the prompt box's bottom rule (a run of `─` losing
+      its last one) — and the box's TOP rule, the one row of that box with no `EL`
+      behind it, kept every cell, which is what identified the write form. The
+      frame now writes an `EL` only after a row with a tail
+      (`screen.go` → `fillsLastColumn`), so this is the check that it is not
+      depending on what a host does with an erase at the pending-wrap position:
+      conhost erases the cell the cursor is on, tmux and xterm/VTE erase nothing.
+- [ ] **Nothing depends on an out-of-range cursor position.** The tail erase names
+      a cell inside the screen (`screen.go` → `tailErase`). conhost clamps an
+      out-of-range `CUP` onto the last column and the `ED` after it then erases
+      that cell, where xterm/VTE ignore the position — a frame that sends one
+      loses a character here and nothing on Unix.
 - [ ] Minimizing the window and restoring it, with a mouse-tracking mode set (left
       by a pager or editor that ran before, or by a child this program started):
       nothing of the report reaches the prompt, because `Screen.Start` clears the
