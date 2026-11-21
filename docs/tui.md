@@ -1151,6 +1151,24 @@ arithmetic, the contract asserted after every frame of a session built from
 exactly those classes, and one test per rule, each mutation-checked against the
 rule it pins.
 
+One write is aimed rather than bounded, and it has its own rule: the **tail
+erase** — the closing `ED0` that wipes what the frame's last base row no longer
+covers — never names a cell outside the screen. `screen.go` → `tailErase` starts
+on the first cell after that row's text, and when the row fills the width there is
+no such cell on it: the rows below are cleared from the next row's first column
+instead, and nothing is cleared at all when there is no next row. Naming
+`width+1` is not the harmless no-op it reads as — a host that clamps the
+out-of-range column (conhost does; tmux 3.7c does,
+`screen_tmux_tail_erase_test.go` measures it) lands the cursor ON the last cell,
+and the `ED0` that follows erases it. On the status bar, whose right-hand group is
+right-aligned flush to the edge, that cell is a character: the trailing `R1` of
+the reasoning level came back as `R` on a Windows console while the same bytes
+erased nothing on xterm/VTE, which ignore an out-of-range position instead of
+clamping it — so the row was laid out right, checked out right on Unix, and was
+still a character short on Windows. `tail_erase_test.go` pins the invariant on the
+emitted bytes (no CUP past the width or the height) and its consequence (a
+full-width last row survives being repainted with one character different).
+
 Window rendering produces **visual line arrays** (`Window.cache.lines`) — one
 element per terminal row. The viewport clips that array; it does not ask for the
 joined string `Window.Render` returns, which is built only when something reads

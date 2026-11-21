@@ -291,14 +291,14 @@ func (s *Screen) Render(content string, cur *ScreenCursor, fullScreen bool) erro
 		// small changes repaint a few rows in place.
 		buf = append(buf, ansi.ResetModeTextCursorEnable...)
 		buf = append(buf, diffFrameRows(s.lastContent, content, s.width)...)
-		// Non-overlay frames: the last row (status bar) is short; when the
-		// frame shrank or the last row changed, clear from its end so no
-		// tail residue survives.
+		// Non-overlay frames: the last base row is where the frame ends, so
+		// whatever the previous frame left to the right of it — or below it,
+		// when the frame shrank — has to go. tailErase says where that starts;
+		// the one thing it guarantees is that the cell it names exists.
 		if !hadOverlay {
 			if lr, ok := lastBaseTerminalRow(content, s.width); ok {
 				if needTailErase(s.lastContent, content, s.width) {
-					buf = append(buf, ansi.CursorPosition(cellWidth(lr.text)+1, lr.row+1)...)
-					buf = append(buf, ansi.EraseDisplay(0)...)
+					buf = append(buf, tailErase(lr, s.width, s.height)...)
 				}
 			}
 		}
@@ -884,11 +884,11 @@ func boolInt(b bool) int {
 
 // needTailErase reports whether a steady non-overlay frame needs the
 // trailing ED0: the new frame is shorter than the old one (rows below
-// would survive), or the last base row changed (its short tail — the
-// status bar may be shorter than the screen width when no model is
-// shown, and is only padded when the right-aligned model fills the row
-// — must be wiped). Positions are TERMINAL rows (soft-wrap aware), not
-// newline indices.
+// would survive), or the last base row changed (its tail — the status bar
+// may be shorter than the screen width when no model is shown, and is
+// only padded when the right-aligned model fills the row — must be
+// wiped). Positions are TERMINAL rows (soft-wrap aware), not newline
+// indices. Where the wipe starts is tailErase's business.
 func needTailErase(oldContent, newContent string, width int) bool {
 	oldLast, oldOK := lastBaseTerminalRow(oldContent, width)
 	newLast, newOK := lastBaseTerminalRow(newContent, width)
@@ -902,6 +902,40 @@ func needTailErase(oldContent, newContent string, width int) bool {
 		return true
 	}
 	return false
+}
+
+// tailErase returns the sequence that clears what the frame's last base row no
+// longer covers: the rest of that row when it is shorter than the width, and
+// every row below it when the frame shrank.
+//
+// The cell it names always exists, and that is the whole point. A CUP one column
+// past the last one is not harmless: a host that CLAMPS an out-of-range CUP —
+// conhost, and tmux 3.7c as measured in screen_tmux_tail_erase_test.go — puts the
+// cursor ON the last column, and the ED that follows then erases that cell
+// instead of starting after it. On a row that fills the width, that cell is the
+// row's last CHARACTER. That is how the status bar's trailing "R1" came to read
+// "R" on a Windows console, while the same bytes erased nothing on the hosts that
+// ignore an out-of-range CUP instead of clamping it (xterm, VTE) — which is why
+// the row was laid out right, checked out right on Unix, and was still short one
+// character on Windows. The status row is the one that made this visible: its
+// right-hand group is right-aligned flush to the edge (tui_status.go →
+// assembleStatusLeft), so the row is exactly `width` cells wide.
+//
+// A row that fills the width therefore has no tail to erase, and the rows below
+// are cleared from the first column of the next row — but only when there IS a
+// next row, because a CUP past the screen's last row is clamped to that row by
+// the same hosts, and the ED would then erase it whole. An unknown height (0,
+// which only a Screen built by hand in a test has) clears nothing below rather
+// than guessing: leaving residue is repaired by the next full redraw, erasing a
+// row that is still in use is not.
+func tailErase(lr frameRow, width, height int) string {
+	if col := cellWidth(lr.text) + 1; col <= width {
+		return ansi.CursorPosition(col, lr.row+1) + ansi.EraseDisplay(0)
+	}
+	if height > 0 && lr.row+2 <= height {
+		return ansi.CursorPosition(1, lr.row+2) + ansi.EraseDisplay(0)
+	}
+	return ""
 }
 
 // containsCUP reports whether content draws rows with absolute cursor

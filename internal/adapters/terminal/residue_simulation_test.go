@@ -88,6 +88,19 @@ func applyFrame(grid [][]rune, frame string, width int) [][]rune {
 				} else {
 					row, col = 0, 0
 				}
+				// A column past the last one lands ON the last column. This is
+				// not a detail: conhost clamps, and tmux 3.7c clamps
+				// (screen_tmux_tail_erase_test.go measures it), so the ED that
+				// follows an out-of-range CUP erases the cell it landed on.
+				// Modeling the position loosely here is what let a frame name
+				// column width+1 without any test noticing what it cost on a
+				// host that clamps (tail_erase_test.go).
+				if col >= width {
+					col = width - 1
+				}
+				if col < 0 {
+					col = 0
+				}
 			}
 			i = j + 1
 		default:
