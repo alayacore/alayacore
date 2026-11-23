@@ -208,13 +208,14 @@ func (m Terminal) handleConfirmCancel(r *ConfirmResult, fromCmd bool) (Terminal,
 	// A cancel with words still queued is two questions, not one. The second is
 	// asked only when there is something to lose, so the common cancel costs no
 	// extra keystroke, and each answer means one thing (see
-	// ConfirmDialog.updateCancelSteering). The count is the status bar's own
-	// snapshot, so the two surfaces cannot disagree.
-	if queued := m.out.SnapshotStatus().SteeringPending; queued > 0 {
+	// ConfirmDialog.updateCancelSteering). Whether words are waiting is the only
+	// thing the question needs: the session settles the queue whole, so how many
+	// prompts it holds would not change either answer.
+	if m.out.SnapshotStatus().SteeringQueued {
 		// fromCmd rides along: the second step is the same cancel, so it would
 		// be wrong to lose the fact that a typed :cancel was what started it.
 		m.confirmFromCommand = fromCmd
-		return m.openConfirmCancelSteering(queued), nil
+		return m.openConfirmCancelSteering(), nil
 	}
 	return m.submitCommand(commands.CommandNameCancel, fromCmd)
 }

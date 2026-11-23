@@ -123,25 +123,19 @@ func TestCancelWithoutQueuedSteeringAsksOnce(t *testing.T) {
 	}
 }
 
-// The second step's text names both outcomes and repeats the count the live edge
-// is showing — "y / n" alone would make the reader guess which answer drops
-// their words.
+// The second step's text names both outcomes — "y / n" alone would make the
+// reader guess which answer drops their words.
 func TestCancelSteeringDialogNamesBothOutcomes(t *testing.T) {
-	cd := NewConfirmDialog(DefaultStyles()).WithSize(60, 24).OpenCancelSteering(2)
+	cd := NewConfirmDialog(DefaultStyles()).WithSize(60, 24).OpenCancelSteering()
 	got := strings.Join(confirmDialogRows(t, cd), "\n")
 	for _, want := range []string{
 		"Discard the queued steering?",
-		"2 steering messages are queued.",
+		"Messages you sent are still queued.",
 		"y drops them, n runs them as the next prompt",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the second step is missing %q:\n%s", want, got)
 		}
-	}
-
-	single := strings.Join(confirmDialogRows(t, NewConfirmDialog(DefaultStyles()).WithSize(60, 24).OpenCancelSteering(1)), "\n")
-	if !strings.Contains(single, "1 steering message is queued.") {
-		t.Errorf("one queued message should read as a singular:\n%s", single)
 	}
 }
 

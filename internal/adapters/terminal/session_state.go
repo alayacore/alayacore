@@ -31,13 +31,12 @@ type sessionState struct {
 	maxSteps       int
 	reasoningLevel int
 
-	// Steering queue, shown as "N steering" on the live-edge row above the
-	// input box (live_edge.go): submissions reported "queued" and not yet
-	// "delivered"/"dropped". steeringDeliveredAhead absorbs the one inversion
-	// the two session writers can produce — a delivered/dropped written before
-	// the queued it belongs to (see updateSteering).
-	steeringPending        int
-	steeringDeliveredAhead bool
+	// Whether a steering batch is waiting: prompts the session reported "queued"
+	// and has not yet reported "delivered"/"dropped". A fact, not a count — the
+	// session takes the batch whole, so "how many" is not something a reader can
+	// act on. It is what decides whether a cancel has words to ask about
+	// (keybinds.go), and nothing else reads it.
+	steeringQueued bool
 
 	// Provider speed metrics from the "task" system message.
 	// stepTPS/ttftMS are the latest step's values. Zero until a step with
@@ -176,33 +175,28 @@ func (s *sessionState) updateTask(inProgress bool, currentStep, maxSteps int, co
 	return completed
 }
 
-// updateSteering folds one "steering" SM phase into the queued count. "queued"
-// counts a submission in; "delivered"/"dropped" clear the whole batch, which is
-// all-or-nothing (the session drains the queue in one take); "refused" never
-// entered. Queued/refused come from the run goroutine and delivered/dropped
-// from the task goroutine, so a delivered can precede the queued it belongs to
-// — steeringDeliveredAhead cancels that one queued instead of letting the count
-// stick.
+// updateSteering folds one "steering" SM phase into the waiting fact: "queued"
+// means words are waiting, "delivered"/"dropped" mean the batch is settled (it
+// is taken whole, so it is all-or-nothing), and "refused" never entered, so it
+// changes nothing.
+//
+// A bool and not a count, because a count would be a number with no meaning: the
+// session splices or drops the whole queue in one take, so whether words are
+// waiting is the entire fact. It also makes the one inversion the two session
+// writers can produce harmless — a "delivered" that arrives before its "queued"
+// leaves the flag set, and a stale offer to keep words that already went is a
+// wasted dialog, while a stale "nothing waiting" would silently drop them.
 func (s *sessionState) updateSteering(phase string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	switch phase {
 	case protocol.SteeringQueued:
-		if s.steeringDeliveredAhead {
-			s.steeringDeliveredAhead = false
-			return
-		}
-		s.steeringPending++
+		s.steeringQueued = true
 	case protocol.SteeringDelivered, protocol.SteeringDropped:
-		if s.steeringPending == 0 {
-			s.steeringDeliveredAhead = true
-			return
-		}
-		s.steeringPending = 0
+		s.steeringQueued = false
 	default:
 		return
 	}
-	s.statusVersion++
 }
 
 // updateModel atomically updates active model info.
@@ -456,7 +450,7 @@ func (s *sessionState) snapshotStatus() StatusSnapshot {
 		TTFTMS:          s.ttftMS,
 		MCPStatus:       s.mcpStatus,
 		MCPServer:       s.mcpServer,
-		SteeringPending: s.steeringPending,
+		SteeringQueued:  s.steeringQueued,
 		Version:         s.statusVersion,
 	}
 	// Copy slices only when populated — `append([]T(nil), nil...)` allocates

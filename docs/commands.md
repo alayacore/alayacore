@@ -165,7 +165,7 @@ prompt typed afterwards is part of the next prompt either way. Any other word is
 `REQUEST_INVALID_ARGS`, with the usage line.
 
 The TUI reaches both forms from `Ctrl+G`: the confirmation dialog offers the
-keeping form only when the status bar reports queued steering, so the common case
+keeping form only when the session reports queued steering, so the common case
 (nothing queued) asks nothing extra.
 
 ## Idle Commands

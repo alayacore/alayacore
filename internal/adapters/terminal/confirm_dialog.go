@@ -149,17 +149,12 @@ func (cd ConfirmDialog) OpenCancel() ConfirmDialog {
 // Esc abandons the cancel — and a dialog cannot offer three outcomes with two
 // keys.
 //
-// queued is the count the status bar is showing (the same snapshot), so the
-// dialog and the live edge cannot disagree on screen. It describes the last
-// report, not what the session will find when it processes the cancel: the queue
-// is settled at that instant, not at this one.
-func (cd ConfirmDialog) OpenCancelSteering(queued int) ConfirmDialog {
+// It names no number, because there is no number that would change an answer:
+// the session takes the queue whole and either sends it as the next prompt or
+// drops it, so "some words are waiting" is the entire question.
+func (cd ConfirmDialog) OpenCancelSteering() ConfirmDialog {
 	cd = cd.open(ConfirmCancelSteering)
-	word := "messages are"
-	if queued == 1 {
-		word = "message is"
-	}
-	cd.Description = fmt.Sprintf("%d steering %s queued.", queued, word)
+	cd.Description = "Messages you sent are still queued."
 	return cd
 }
 

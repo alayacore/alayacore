@@ -746,37 +746,25 @@ and the prompt box's top rule, which is where the newest line arrives. It says
 otherwise (`- 12 lines below -`), and stays blank when it has nothing to say
 (scrolled back to the last line: the whole transcript is on screen).
 
-It also carries the **steering queue** — the prompts accepted for the running
-task and not yet delivered to it, spelled `2 steering` and shown only while it
-is non-zero. It is the one readout about the prompts themselves (the status
-bar's telemetry describes the run — steps, tokens, speed — not the words
-waiting to join it), and it is here rather than in the status bar for the plain
-reason that the status bar is the row *below* the prompt box: a reader watching
-the words they just typed has no reason to look there, and a count that shows
-up where they are not looking is worth nothing. The live edge is the row
-directly above the box — the boundary between what came back and what is about
-to be sent — which is where "the words I typed are waiting" belongs. The count
-is read from the session state while rendering, like the position is read from
-the display model, so neither can be a version behind. `N steering` is the noun
-the session reports the lifecycle with (`agent/session_steering.go`); a
-delivered prompt takes the count back to zero, so the segment is present
-exactly while words are waiting and absent the rest of the time — there is no
-"0 steering" and no separate arrival notice.
+It says **nothing about the steering queue**, and that is deliberate. It used to:
+`2 steering`, the prompts accepted for the running task and not yet delivered.
+The number was the problem. The session takes the queue whole — one splice or one
+drop, never piecemeal — so "how many" is not a fact a reader can act on, and a
+number suggests a batch that drains one prompt at a time. Whether words are
+waiting is still used, by the one question it changes the answer to: `Ctrl+G`
+offers to *keep* them instead of dropping them with the task, and only when there
+are any (see [Keys](#keys)). That fact lives in the session state and is read when
+the dialog opens, not on a row that is about where the viewport is.
 
-The two facts are joined by `, ` (`- following, 2 steering -`) and either
-stands alone when the other is silent — the count alone is all there is to say
-in the one state with no position to report. A comma, not the ` | ` a chrome
-row lists fields with (see [Sticky Window Line](#sticky-window-line)): this row
-is a lowercase phrase framed by two hyphens, and `, ` reads as one. The comma
-is ASCII, so like the frame it is one cell in every terminal.
-
-The row says what it says at **every width**: a terminal too narrow for the
-label cuts the phrase between the two hyphens (`- 5 lines bel… -`), keeping the
-frame. What the row says must not be a function of how the user sized their
-window — otherwise a resize takes the count away with nothing typed and the next
-resize brings it back. The cut comes off the end of the phrase, so the count is
-what a very narrow row loses first; a row too narrow for the frame and one cell
-of label draws nothing at all (`TestLiveEdgeWidthNeverChangesTheFacts`).
+So the row has one fact again — the viewport's position — stated as a lowercase
+phrase framed by two hyphens (`- following -`, `- 12 lines below -`), cut from its
+end when the terminal is too narrow for it (`- 5 lines bel… -`) with the frame
+kept. Nothing else rides on it, so nothing about it can disagree with another
+surface. What it says must not be a function of how the user sized their
+window — otherwise a resize takes a word out of the label with nothing scrolled
+and the next resize brings it back; the cut comes off the end of the phrase, and
+a row too narrow for the frame and one cell of label draws nothing at all
+(`TestLiveEdgeWidthNeverChangesTheFacts`).
 
 It counts **document** lines under the viewport, whatever window they belong to
 — a total, not a per-message figure; the pinned row's `N lines hidden` is the
@@ -808,9 +796,7 @@ carrying its own "candidate for an ASCII replacement" note (see
 waived glyph. Reading the state while rendering, instead of baking it into the
 cached status string, retired a staleness patch along with it: navigation moves
 no session status version, so the segment kept showing the previous state until
-the next session event (`TestLiveEdgeReadsStateAtRenderTime`). The steering
-count followed the same rule for the same reason — it is a fact about the words
-being typed, and the words are typed at the box this row sits on top of.
+the next session event (`TestLiveEdgeReadsStateAtRenderTime`).
 
 ### Fold Mode
 

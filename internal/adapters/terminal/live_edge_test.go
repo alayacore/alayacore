@@ -27,28 +27,21 @@ func TestLiveEdgeText(t *testing.T) {
 		name       string
 		following  bool
 		linesBelow int
-		steering   int
 		want       string
 	}{
-		{"following", true, 0, 0, "following"},
+		{"following", true, 0, "following"},
 		// The two cannot be true together (following pins the viewport to
 		// the bottom), but following wins if a caller ever passes both.
-		{"following wins over a count", true, 7, 0, "following"},
-		{"several lines below", false, 7, 0, "7 lines below"},
-		{"one line below", false, 1, 0, "1 line below"},
-		{"nothing below, nothing to say", false, 0, 0, ""},
-		// Steering rides alongside the position fact, whichever it is.
-		{"following and steering", true, 0, 2, "following, 2 steering"},
-		{"one line below and steering", false, 1, 1, "1 line below, 1 steering"},
-		// The count stands alone in the one state with no position to report
-		// (scrolled back to the last line without re-enabling follow).
-		{"steering alone", false, 0, 3, "3 steering"},
+		{"following wins over a count", true, 7, "following"},
+		{"several lines below", false, 7, "7 lines below"},
+		{"one line below", false, 1, "1 line below"},
+		{"nothing below, nothing to say", false, 0, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := liveEdgeText(tc.following, tc.linesBelow, tc.steering); got != tc.want {
-				t.Errorf("liveEdgeText(%v, %d, %d) = %q, want %q",
-					tc.following, tc.linesBelow, tc.steering, got, tc.want)
+			if got := liveEdgeText(tc.following, tc.linesBelow); got != tc.want {
+				t.Errorf("liveEdgeText(%v, %d) = %q, want %q",
+					tc.following, tc.linesBelow, got, tc.want)
 			}
 		})
 	}
@@ -58,18 +51,16 @@ func TestLiveEdgeText(t *testing.T) {
 // framed label with the phrase cut between the hyphens when the terminal is too
 // narrow for it. What the row says is not a function of width — it used to drop
 // its frame, then its position label, as room ran out, so one session read as
-// three different readouts at three widths (and a resize could take the count
-// away without the user having typed anything).
+// three different readouts at three widths (and a resize could take a word out
+// of the label without the user having scrolled anything).
 func TestLiveEdgeWidthNeverChangesTheFacts(t *testing.T) {
 	m := liveEdgeFixture(20)
-	steeringPhase(t, m.out, "queued", "")
-	steeringPhase(t, m.out, "queued", "")
 	m.display = m.display.MarkUserScrolled().ScrollUp(5)
 	m = m.updateDisplayHeight()
 
 	full := stripANSI(m.renderLiveEdge())
-	if full != "- 5 lines below, 2 steering -" {
-		t.Fatalf("fixture: live edge = %q, want both facts", full)
+	if full != "- 5 lines below -" {
+		t.Fatalf("fixture: live edge = %q, want the position label", full)
 	}
 	needed := Width(full)
 
