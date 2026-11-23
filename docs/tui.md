@@ -760,7 +760,7 @@ whole queue in one take — one splice or one drop, never piecemeal — so "how 
 is not a fact a reader can act on, and a number suggests a queue that drains a
 prompt at a time. The one question the count might answer is already answered
 better by `Ctrl+G`, which offers to *keep* the words instead of dropping them with
-the task, and only when there are any (see [Keys](#keys)).
+the task, and only when there are any (see [Input & Actions](#input--actions)).
 
 The two facts are comma-joined (`- following, steering queued -`,
 `- 5 lines hidden, steering queued -`) and either stands alone when the other is
