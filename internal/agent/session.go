@@ -304,18 +304,12 @@ func (s *Session) HasRejected() bool { return s.modelService.HasRejected() }
 
 // LoadOrNewSession loads a session from file or creates a new one.
 //
-// A file that is not there is a new session: `--session` names the file a
-// conversation lives in, and the first save creates it. Nothing is reported and
-// the binding stays.
-//
-// A file that exists but cannot be used — unreadable, empty, corrupt, a body that
-// is not a conversation (see invalidToolPair), or written by another protocol
-// version — ends the start with that error. The user asked for that file;
-// continuing without it would begin a conversation they did not ask for, bound to
-// a path that must never be written, and a message in place of the history they
-// expected is the kind of quiet surprise an important tool cannot afford. Fixing
-// the file (or starting without `--session`) is the way forward, and the error
-// says what is wrong with it.
+// A missing file is a new session: `--session` names the file a conversation
+// lives in, and the first save creates it. Any other failure to load it — empty,
+// unreadable, corrupt, a body that is not a conversation (see invalidToolPair),
+// or another protocol version — ends the start with an error naming the file.
+// Why that is a refusal rather than a fresh session is docs/architecture.md's
+// "Session Persistence"; the error itself says what is wrong with the file.
 //
 // The returned session is ready to use but NOT yet started — call Start() to
 // begin processing input.

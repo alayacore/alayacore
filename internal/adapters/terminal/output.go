@@ -544,15 +544,15 @@ func (to *outputWriter) applySystemMsg(msg protocol.SystemMsg) {
 	}
 }
 
-// handleSystemSteering folds a steering event into the queue count, and renders
-// the human line it carries only where that line adds something the count does
-// not — a drop or a refusal. The refused phase keeps the error register the BUSY
-// text used to have.
+// handleSystemSteering folds a steering event into the waiting state the live
+// edge shows (live_edge.go), and renders the human line it carries only where
+// that line adds something the row does not — a drop or a refusal. The refused
+// phase keeps the error register the BUSY text used to have.
 func (to *outputWriter) handleSystemSteering(m protocol.SteeringMsg) {
-	// The count is driven by the phase. The human line is shown only where it
-	// says something the count does not — a drop (the words are gone) or a
+	// The state is driven by the phase. The human line is shown only where it
+	// says something the row does not — a drop (the words are gone) or a
 	// refusal (this prompt was not queued). A "queued" line would only repeat
-	// the count.
+	// what "steering queued" already says.
 	to.status.updateSteering(m.Phase)
 	if m.Text == "" || m.Phase == protocol.SteeringQueued {
 		return

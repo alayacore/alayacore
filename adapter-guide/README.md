@@ -501,20 +501,19 @@ after one the transcript an adapter has accumulated is not the session's
 
 ### Error handling
 
-1. **Corrupt session file**: If a content part in a saved session cannot be
-   deserialized (unknown tag, malformed JSON), the session load fails and the
-   agent sends an error message like:
+1. **Unusable session file**: a file named by `--session` that cannot be loaded
+   never becomes a session, and it produces **no frames**: the failure is the
+   return value of the startup call, not an SM. What the adapter sees is a start
+   that failed — the TUI shows the error and exits, the line modes print it on
+   stderr and exit non-zero — and the file itself is left untouched for the user
+   to fix:
    ```
-   SM{"type":"error","data":{"text":"corrupt session file: failed to serialize content part (HistoryID=5): unexpected end of JSON input"}}
+   Error: failed to load session: could not load session file "s.alaya": session file missing frontmatter
    ```
-   The adapter should display the error and stop sending new prompts — no
-   further frames will be processed.
-
-   A session file that cannot be used at all — unreadable, empty, not a session
-   (a tool call with no result, a result with no call), or from another
-   `message_version` — never becomes a session: the core exits with that error
-   instead of starting, so no frames are written and no session file is touched.
-   Starting without `--session`, or fixing the file, is the way forward.
+   "Cannot be loaded" is any of: unreadable; empty (a file with no frontmatter is
+   not a session); a body that is not frames; a tool call with no result or a
+   result with no call; or another `message_version`. Starting without
+   `--session` is the way forward when there is nothing to recover.
 
 2. **Model config errors**: At startup, model configuration errors (invalid
    fields, duplicate names, etc.) are sent to the adapter as system error

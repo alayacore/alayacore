@@ -135,92 +135,44 @@ func TestLoadOrNewSession_MissingFileIsSilent(t *testing.T) {
 	}
 }
 
-func TestLoadOrNewSession_CorruptFileStopsTheStart(t *testing.T) {
-	// A session file that EXISTS but cannot be used ends the start: the user
-	// asked for that file, and running a fresh conversation against it — where
-	// the first auto-save would overwrite it — is the quiet surprise to avoid.
-	path := filepath.Join(t.TempDir(), "corrupt.alaya")
-	if err := os.WriteFile(path, []byte("not a session file"), 0600); err != nil {
-		t.Fatalf("write corrupt file: %v", err)
-	}
-	before, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read fixture: %v", err)
-	}
-	var out bytes.Buffer
-
-	session, sessionFile, err := LoadOrNewSession(SessionConfig{
-		SessionFile:  path,
-		BaseTools:    []llm.Tool{},
-		SystemPrompt: "test system prompt",
-		Input:        &nopInput{},
-		Output:       &out,
-	})
-	if err == nil {
-		t.Fatal("LoadOrNewSession accepted a corrupt session file")
-	}
-	if session != nil || sessionFile != "" {
-		t.Errorf("a failed start returned a session (%v) and a path (%q)", session != nil, sessionFile)
-	}
-	if !strings.Contains(err.Error(), path) {
-		t.Errorf("error = %q, want it to name the file", err)
-	}
-
-	after, readErr := os.ReadFile(path)
-	if readErr != nil {
-		t.Fatalf("re-read fixture: %v", readErr)
-	}
-	if !bytes.Equal(before, after) {
-		t.Error("the refused file was modified")
-	}
-}
-
-// An unpaired tool call is the shape that parses but cannot be sent: it stops the
-// start for the same reason as a corrupt byte, and names the record.
-func TestLoadOrNewSession_UnpairedToolCallStopsTheStart(t *testing.T) {
-	path := writeSessionFile(t,
-		`UX{"type":"text","text":"read it"}`,
-		`AF{"call_id":"call-1","name":"read_file","input":{}}`,
-	)
-
-	var out bytes.Buffer
-	session, sessionFile, err := LoadOrNewSession(SessionConfig{
-		SessionFile:  path,
-		BaseTools:    []llm.Tool{},
-		SystemPrompt: "test system prompt",
-		Input:        &nopInput{},
-		Output:       &out,
-	})
-	if err == nil {
-		t.Fatal("LoadOrNewSession accepted a tool call with no result")
-	}
-	if !strings.Contains(err.Error(), "call-1") {
-		t.Errorf("error = %q, want it to name the record", err)
-	}
-	if session != nil || sessionFile != "" {
-		t.Errorf("a failed start returned a session (%v) and a path (%q)", session != nil, sessionFile)
-	}
-	// Nothing is written to the adapter: there is no session to report from.
-	if got := out.String(); strings.Contains(got, `"type":"error"`) {
-		t.Errorf("the failed start wrote frames: %q", got)
-	}
-}
-
-// A file that is empty, or holds only whitespace, is an invalid one like any
-// other: `--session` names a session, and this one does not contain a session.
-// An editor's untouched buffer ("\n") gets the same answer for the same reason.
-func TestLoadOrNewSession_EmptyFileStopsTheStart(t *testing.T) {
-	for _, tc := range []struct {
-		name    string
-		content string
+// A session file that exists but cannot be used ends the start, for every way it
+// can be unusable: the user asked for that file, and running a fresh conversation
+// against it — where the first auto-save would overwrite what they were about to
+// fix — is the quiet surprise to avoid. Nothing is written to the adapter either:
+// there is no session to report from.
+//
+// The two halves of a tool record are the shapes that parse and still cannot be
+// sent, so they are rows here beside the byte-level failures; the error names the
+// record, which is the whole point of catching them at the load.
+func TestLoadOrNewSession_UnusableFileStopsTheStart(t *testing.T) {
+	cases := []struct {
+		name   string
+		body   string
+		framed bool // body is session frames, not a raw file
+		want   string
 	}{
-		{"zero bytes", ""},
-		{"whitespace only", "\n \n"},
-	} {
+		{"not a session", "not a session file", false, "missing frontmatter"},
+		{"zero bytes", "", false, "missing frontmatter"},
+		{"whitespace only", "\n \n", false, "missing frontmatter"},
+		{"tool call with no result", `UX{"type":"text","text":"read it"}` + "\n" +
+			`AF{"call_id":"call-1","name":"read_file","input":{}}`, true, "call-1"},
+		{"tool result with no call", `UX{"type":"text","text":"read it"}` + "\n" +
+			`UF{"call_id":"call-1","output":[{"type":"text","text":"ok"}]}`, true, "answers no tool call"},
+	}
+	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), "empty.alaya")
-			if err := os.WriteFile(path, []byte(tc.content), 0600); err != nil {
-				t.Fatalf("write fixture: %v", err)
+			var path string
+			if tc.framed {
+				path = writeSessionFile(t, strings.Split(tc.body, "\n")...)
+			} else {
+				path = filepath.Join(t.TempDir(), "session.alaya")
+				if err := os.WriteFile(path, []byte(tc.body), 0600); err != nil {
+					t.Fatalf("write fixture: %v", err)
+				}
+			}
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read fixture: %v", err)
 			}
 			var out bytes.Buffer
 
@@ -232,16 +184,24 @@ func TestLoadOrNewSession_EmptyFileStopsTheStart(t *testing.T) {
 				Output:       &out,
 			})
 			if err == nil {
-				t.Fatal("LoadOrNewSession accepted an empty session file")
+				t.Fatal("LoadOrNewSession accepted an unusable session file")
 			}
-			if !strings.Contains(err.Error(), path) {
-				t.Errorf("error = %q, want it to name the file", err)
+			if !strings.Contains(err.Error(), path) || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("error = %q, want it to name the file and say %q", err, tc.want)
 			}
 			if session != nil || sessionFile != "" {
 				t.Errorf("a failed start returned a session (%v) and a path (%q)", session != nil, sessionFile)
 			}
-			if got := out.String(); strings.Contains(got, `"type":"error"`) {
+			if got := out.String(); got != "" {
 				t.Errorf("the failed start wrote frames: %q", got)
+			}
+
+			after, readErr := os.ReadFile(path)
+			if readErr != nil {
+				t.Fatalf("re-read fixture: %v", readErr)
+			}
+			if !bytes.Equal(before, after) {
+				t.Error("the refused file was modified")
 			}
 		})
 	}

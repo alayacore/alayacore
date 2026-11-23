@@ -747,11 +747,11 @@ and the prompt box's top rule, which is where the newest line arrives. It says
 otherwise (`- 12 lines hidden -`), and stays blank when it has nothing to say
 (scrolled back to the last line: the whole transcript is on screen).
 
-It carries a second fact while a prompt is waiting: **`steering queued`**, one
-word and never a number. The words a user typed mid-task are accepted the moment
-they are sent but reach the model at the task's next step boundary — a whole tool
-call away, or behind a compaction — so without this the gesture has no
-acknowledgement until the echo lands. The row says the fact, the session clears it
+It carries a second fact while a prompt is waiting: **`steering queued`**. The
+words a user typed mid-task are accepted the moment they are sent but reach the
+model at the task's next step boundary — a whole tool call away, or behind a
+compaction — so without this the gesture has no acknowledgement until the echo
+lands. The row says the fact, the session clears it
 when it splices or drops the batch, and the words themselves then appear in the
 transcript: "waiting" is followed by them arriving, and nothing in between.
 

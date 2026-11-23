@@ -53,9 +53,9 @@ type StatusSnapshot struct {
 
 	// SteeringQueued reports whether a steering batch is waiting: prompts the
 	// session accepted for the running task and has not yet delivered or
-	// dropped. A fact, not a count — the session takes the batch whole, so how
-	// many prompts it holds says nothing a reader can act on. Read on demand
-	// (keybinds.go asks it before offering the cancel-with-steering question).
+	// dropped. A fact and not a count (live_edge.go says why). Read by the
+	// live-edge row on every render, and by the cancel dialog before it offers to
+	// keep the words (keybinds.go).
 	SteeringQueued bool
 
 	// Version is a monotonic counter that increments on every

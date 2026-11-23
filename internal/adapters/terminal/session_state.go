@@ -32,10 +32,10 @@ type sessionState struct {
 	reasoningLevel int
 
 	// Whether a steering batch is waiting: prompts the session reported "queued"
-	// and has not yet reported "delivered"/"dropped". A fact, not a count — the
-	// session takes the batch whole, so "how many" is not something a reader can
-	// act on. It is what decides whether a cancel has words to ask about
-	// (keybinds.go), and nothing else reads it.
+	// and has not yet reported "delivered"/"dropped". A fact and not a count, for
+	// the reason live_edge.go's note gives — that row is where it is said. Two
+	// readers: the row, and the cancel dialog, which asks whether there are words
+	// to keep (keybinds.go).
 	steeringQueued bool
 
 	// Provider speed metrics from the "task" system message.
@@ -177,15 +177,13 @@ func (s *sessionState) updateTask(inProgress bool, currentStep, maxSteps int, co
 
 // updateSteering folds one "steering" SM phase into the waiting fact: "queued"
 // means words are waiting, "delivered"/"dropped" mean the batch is settled (it
-// is taken whole, so it is all-or-nothing), and "refused" never entered, so it
-// changes nothing.
+// is taken whole), and "refused" never entered, so it changes nothing. The bit
+// rather than a count is live_edge.go's to justify — that row is what says it.
 //
-// A bool and not a count, because a count would be a number with no meaning: the
-// session splices or drops the whole queue in one take, so whether words are
-// waiting is the entire fact. It also makes the one inversion the two session
-// writers can produce harmless — a "delivered" that arrives before its "queued"
-// leaves the flag set, and a stale offer to keep words that already went is a
-// wasted dialog, while a stale "nothing waiting" would silently drop them.
+// One bit also makes the one inversion the two session writers can produce
+// harmless: a "delivered" that arrives before its "queued" leaves the flag set,
+// and a stale offer to keep words that already went costs a dialog, while a
+// stale "nothing waiting" would drop them silently.
 func (s *sessionState) updateSteering(phase string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
