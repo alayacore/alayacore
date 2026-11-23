@@ -303,13 +303,22 @@ func (s *Session) HasRejected() bool { return s.modelService.HasRejected() }
 // ============================================================================
 
 // LoadOrNewSession loads a session from file or creates a new one.
-// Returns an error if the session file exists but has an incompatible version
-// (the version must match protocol.MessageVersion exactly).
-// A missing session file is the normal first-run case and is silent.
-// If the session file exists but fails to load for other reasons (corrupt data,
-// permissions), an error is printed to stderr and a new session is created.
-// The returned session is ready to use but NOT yet started —
-// call Start() to begin processing input.
+//
+// A file that is not there is a new session: `--session` names the file a
+// conversation lives in, and the first save creates it. Nothing is reported and
+// the binding stays.
+//
+// A file that exists but cannot be used — unreadable, empty, corrupt, a body that
+// is not a conversation (see invalidToolPair), or written by another protocol
+// version — ends the start with that error. The user asked for that file;
+// continuing without it would begin a conversation they did not ask for, bound to
+// a path that must never be written, and a message in place of the history they
+// expected is the kind of quiet surprise an important tool cannot afford. Fixing
+// the file (or starting without `--session`) is the way forward, and the error
+// says what is wrong with it.
+//
+// The returned session is ready to use but NOT yet started — call Start() to
+// begin processing input.
 func LoadOrNewSession(cfg SessionConfig) (*Session, string, error) {
 	cfg.SessionFile = config.ExpandPath(cfg.SessionFile)
 	if cfg.SessionFile == "" {
@@ -317,27 +326,21 @@ func LoadOrNewSession(cfg SessionConfig) (*Session, string, error) {
 	}
 
 	data, loadErr := loadSession(cfg.SessionFile)
-	if loadErr == nil {
+	switch {
+	case loadErr == nil:
 		s := buildSession(cfg, data)
 		if replayErr := s.replayContentsToAdapter(); replayErr != nil {
 			s.modelService.initError = replayErr
 		}
 		return s, cfg.SessionFile, nil
+	case errors.Is(loadErr, os.ErrNotExist):
+		return buildSession(cfg, nil), cfg.SessionFile, nil
+	default:
+		// The only report this failure gets, so it names the file the user asked
+		// for as well as what is wrong with it (loadSession's own error says only
+		// the latter — see its callers).
+		return nil, "", fmt.Errorf("could not load session file %q: %w", cfg.SessionFile, loadErr)
 	}
-
-	if errors.Is(loadErr, errSessionVersionMismatch) {
-		return nil, "", loadErr
-	}
-
-	// A missing session file is the normal "start fresh" case — silent.
-	// Only report when the file EXISTS but cannot be loaded (corrupt data,
-	// permission error, etc.): emit system error messages and start fresh
-	// rather than failing entirely.
-	if !errors.Is(loadErr, os.ErrNotExist) {
-		_ = protocol.WriteSystemMsg(cfg.Output, protocol.ErrorMsg{Text: fmt.Sprintf("could not load session file %q: %v", cfg.SessionFile, loadErr)})
-		_ = protocol.WriteSystemMsg(cfg.Output, protocol.ErrorMsg{Text: "starting new session"})
-	}
-	return buildSession(cfg, nil), cfg.SessionFile, nil
 }
 
 // buildSession wires a Session from cfg and, when data is non-nil, from the file

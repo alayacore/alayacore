@@ -128,8 +128,12 @@ func TestSessionFileOmitsHistoryIDAndRoundTripsTime(t *testing.T) {
 	contents := []llm.ContentPart{
 		&llm.TextPart{Text: "hi", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser, HistoryID: 7, Time: stamp}},
 		&llm.TextPart{Text: "hello", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant, HistoryID: 8, Time: stamp}},
+		// A call for the result below: the loader accepts a tool record only in
+		// its pair (invalidToolPair), and this test is about ids and times.
+		&llm.ToolInputPart{ID: "call_1", Name: "read_file", Input: []byte("{}"),
+			ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant, HistoryID: 9, Time: stamp}},
 		&llm.ToolOutputPart{ID: "call_1", Output: []llm.ContentPart{&llm.TextPart{Text: "ok"}},
-			ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleTool, HistoryID: 9, Time: stamp}},
+			ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleTool, HistoryID: 10, Time: stamp}},
 	}
 
 	s := newSaveSession()

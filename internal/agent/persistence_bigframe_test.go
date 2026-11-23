@@ -23,6 +23,16 @@ func TestLoadSessionLargeToolResultFrame(t *testing.T) {
 	big := strings.Repeat("A", 11*1024*1024)
 
 	contents := []llm.ContentPart{
+		// The call is part of the fixture because the loader requires its
+		// result: a body with a tool result and no call is not a conversation
+		// (invalidToolPair refuses it), and this test is about the frame's size,
+		// not about the pairing rule.
+		&llm.ToolInputPart{
+			ID:              "call_big",
+			Name:            "read_file",
+			Input:           []byte("{}"),
+			ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant},
+		},
 		&llm.ToolOutputPart{
 			ID: "call_big",
 			Output: []llm.ContentPart{
@@ -53,13 +63,13 @@ func TestLoadSessionLargeToolResultFrame(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseSessionData rejected a valid >10MiB frame: %v", err)
 	}
-	if len(loaded.Contents) != 1 {
-		t.Fatalf("got %d content parts, want 1", len(loaded.Contents))
+	if len(loaded.Contents) != 2 {
+		t.Fatalf("got %d content parts, want the call and its result", len(loaded.Contents))
 	}
 
-	tr, ok := loaded.Contents[0].(*llm.ToolOutputPart)
+	tr, ok := loaded.Contents[1].(*llm.ToolOutputPart)
 	if !ok {
-		t.Fatalf("content part is %T, want *llm.ToolOutputPart", loaded.Contents[0])
+		t.Fatalf("content part is %T, want *llm.ToolOutputPart", loaded.Contents[1])
 	}
 	if len(tr.Output) != 2 {
 		t.Fatalf("tool output has %d parts, want 2", len(tr.Output))

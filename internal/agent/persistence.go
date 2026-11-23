@@ -171,10 +171,62 @@ func parseSessionData(data []byte) (*sessionData, error) {
 		if err != nil {
 			return nil, err
 		}
+		if err := invalidToolPair(content); err != nil {
+			return nil, err
+		}
 		sd.Contents = content
 	}
 
 	return sd, nil
+}
+
+// invalidToolPair reports the first tool record in parts that has no partner.
+// The API rejects either shape — a call with no answer is an unfinished step, and
+// a result with no earlier call answers nothing — so a body that contains one is
+// not a conversation this program can continue from.
+//
+// The agent loop cannot produce such a body: every step finish trims unpaired
+// calls (cleanIncompleteToolInputs), and :fork refuses to write a prefix with one
+// (unpairedToolUse, the call-side half of this check). That leaves the file
+// itself — hand-edited, truncated, or written by something else — and loading is
+// where it has to be caught. The alternative is the provider's 400 on the first
+// prompt, which names neither the record nor the file.
+func invalidToolPair(parts []llm.ContentPart) error {
+	// First index of each record and the order they appear in, so the message
+	// names the first problem in the file rather than whichever map entry a
+	// random iteration reached.
+	callAt := make(map[string]int, len(parts))
+	resultAt := make(map[string]int, len(parts))
+	var calls, results []string
+	for i, p := range parts {
+		switch v := p.(type) {
+		case *llm.ToolInputPart:
+			if _, ok := callAt[v.ID]; !ok {
+				callAt[v.ID] = i
+				calls = append(calls, v.ID)
+			}
+		case *llm.ToolOutputPart:
+			if _, ok := resultAt[v.ID]; !ok {
+				resultAt[v.ID] = i
+				results = append(results, v.ID)
+			}
+		}
+	}
+	for _, id := range calls {
+		if _, ok := resultAt[id]; !ok {
+			return fmt.Errorf("tool call %q has no result", id)
+		}
+	}
+	for _, id := range results {
+		at, ok := callAt[id]
+		if !ok {
+			return fmt.Errorf("tool result %q answers no tool call", id)
+		}
+		if at > resultAt[id] {
+			return fmt.Errorf("tool result %q precedes the call it answers", id)
+		}
+	}
+	return nil
 }
 
 // parseMessageFrames parses a session file's body — one frame per line — into

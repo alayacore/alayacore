@@ -510,6 +510,12 @@ after one the transcript an adapter has accumulated is not the session's
    The adapter should display the error and stop sending new prompts — no
    further frames will be processed.
 
+   A session file that cannot be used at all — unreadable, empty, not a session
+   (a tool call with no result, a result with no call), or from another
+   `message_version` — never becomes a session: the core exits with that error
+   instead of starting, so no frames are written and no session file is touched.
+   Starting without `--session`, or fixing the file, is the way forward.
+
 2. **Model config errors**: At startup, model configuration errors (invalid
    fields, duplicate names, etc.) are sent to the adapter as system error
    messages:

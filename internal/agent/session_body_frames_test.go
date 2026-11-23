@@ -111,3 +111,81 @@ func TestLoadSession_RejectsANonContentFrame(t *testing.T) {
 		t.Errorf("error = %q, want it to say what is wrong with the frame", err)
 	}
 }
+
+// A tool call the file never answers, and a result that answers nothing, are the
+// two shapes the API rejects outright — a request built from either fails on the
+// first prompt, with an error naming neither the record nor the file. Neither can
+// come from the agent loop (every step finish trims unpaired calls, and :fork
+// refuses to write a prefix with one), so loading is where a hand-edited or
+// truncated file has to be caught.
+func TestLoadSession_RejectsAToolCallWithNoResult(t *testing.T) {
+	path := writeSessionFile(t,
+		`UX{"type":"text","text":"read it"}`,
+		`AF{"call_id":"call-1","name":"read_file","input":{}}`,
+	)
+
+	_, err := loadSession(path)
+	if err == nil {
+		t.Fatal("loadSession accepted a tool call with no result")
+	}
+	if !strings.Contains(err.Error(), "call-1") {
+		t.Errorf("error = %q, want it to name the call", err)
+	}
+}
+
+func TestLoadSession_RejectsAToolResultWithNoCall(t *testing.T) {
+	path := writeSessionFile(t,
+		`UX{"type":"text","text":"read it"}`,
+		`UF{"call_id":"call-1","output":[{"type":"text","text":"ok"}]}`,
+	)
+
+	_, err := loadSession(path)
+	if err == nil {
+		t.Fatal("loadSession accepted a tool result with no call")
+	}
+	if !strings.Contains(err.Error(), "call-1") {
+		t.Errorf("error = %q, want it to name the result", err)
+	}
+}
+
+// A result must answer a call that precedes it: that is the only shape a request
+// accepts, so a file with the two swapped is as unusable as one missing a half.
+func TestLoadSession_RejectsAToolResultBeforeItsCall(t *testing.T) {
+	path := writeSessionFile(t,
+		`UX{"type":"text","text":"read it"}`,
+		`UF{"call_id":"call-1","output":[{"type":"text","text":"ok"}]}`,
+		`AF{"call_id":"call-1","name":"read_file","input":{}}`,
+	)
+
+	_, err := loadSession(path)
+	if err == nil {
+		t.Fatal("loadSession accepted a tool result that precedes its call")
+	}
+	if !strings.Contains(err.Error(), "precedes") {
+		t.Errorf("error = %q, want it to name the ordering problem", err)
+	}
+}
+
+// The paired form loads, so the rejection is about the pair and not about tool
+// records in a file at all.
+func TestLoadSession_AcceptsAPairedToolCallAndResult(t *testing.T) {
+	path := writeSessionFile(t,
+		`UX{"type":"text","text":"read it"}`,
+		`AF{"call_id":"call-1","name":"read_file","input":{}}`,
+		`UF{"call_id":"call-1","output":[{"type":"text","text":"ok"}]}`,
+	)
+
+	data, err := loadSession(path)
+	if err != nil {
+		t.Fatalf("loadSession: %v", err)
+	}
+	if len(data.Contents) != 3 {
+		t.Fatalf("loaded %d parts, want the prompt, the call and its result", len(data.Contents))
+	}
+	if _, ok := data.Contents[1].(*llm.ToolInputPart); !ok {
+		t.Errorf("part 1 = %#v, want the tool call", data.Contents[1])
+	}
+	if _, ok := data.Contents[2].(*llm.ToolOutputPart); !ok {
+		t.Errorf("part 2 = %#v, want the tool result", data.Contents[2])
+	}
+}

@@ -25,7 +25,10 @@ func TestSaveAndLoadReissuesHistoryIDsInRecordOrder(t *testing.T) {
 		{
 			// A provider that streams tool_calls before reasoning/text: the tool
 			// touches IDGen first and takes 2, but the record closes it after
-			// reasoning and text, so the stored order reads 1, 3, 4, 2.
+			// reasoning and text, so the stored order reads 1, 3, 4, 2, 5. The
+			// result is here because a call without one is not a conversation
+			// the loader accepts (invalidToolPair); its own ID is out of order
+			// too, as any part of this record may be.
 			name: "numbering against record order",
 			contents: []llm.ContentPart{
 				&llm.TextPart{Text: "hi", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser, HistoryID: 1}},
@@ -33,6 +36,8 @@ func TestSaveAndLoadReissuesHistoryIDsInRecordOrder(t *testing.T) {
 				&llm.TextPart{Text: "Answer.", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant, HistoryID: 4}},
 				&llm.ToolInputPart{ID: "c1", Name: "read_file", Input: json.RawMessage(`{}`),
 					ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant, HistoryID: 2}},
+				&llm.ToolOutputPart{ID: "c1", Output: []llm.ContentPart{&llm.TextPart{Text: "ok"}},
+					ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleTool, HistoryID: 5}},
 			},
 		},
 		{
