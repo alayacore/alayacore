@@ -223,12 +223,14 @@ The `:summarize` command is a **task command** — it runs in a task goroutine a
 
 ### What it does
 
-1. Appends a structured summary prompt to the conversation history asking the LLM to condense everything into five sections:
-   - **Task** — Original request and success criteria
-   - **Done** — Completed items with specifics (file paths, function names, values)
-   - **State** — Files created/modified/deleted, key decisions and rationale
-   - **Blocked** — Unresolved errors, failing tests, open questions
-   - **Next** — Ordered actions to resume
+1. Appends the summarize prompt to the conversation history: five sections —
+   **Task**, **Done**, **State**, **Blocked**, **Next** — under the rules that
+   make the result usable as a replacement. It has to stand on its own (nothing
+   else of this conversation survives), nothing unverified may read as done, the
+   user's wording for requirements and constraints is carried forward verbatim,
+   and an approach that was tried and rejected is kept with its reason. The
+   wording is `internal/agent/summarize_prompt.md` (embedded by `embed.go`) —
+   one source, so this page does not restate it.
 2. Calls the LLM to generate the summary
 3. **Replaces the entire conversation history** with the summary, preceded by the user message it answers (the summary request) — the summary is an assistant message, so a task has to come in front of it
 4. Resets `ContextTokens` to the summary's output token count via `setContextTokensEvent` (a dedicated event that corrects the value after the `stepFinishEvent` from `processPrompt` has been processed)
