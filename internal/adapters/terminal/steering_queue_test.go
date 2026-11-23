@@ -67,20 +67,30 @@ func TestSteeringSMKeepsWhetherWordsAreWaiting(t *testing.T) {
 	}
 }
 
-// The queue is not a readout. The live edge says where the viewport is and
-// nothing about the words, and the status bar says nothing either: how many
-// prompts are waiting is not a number a reader can act on — the session sends
-// the batch whole — and a count was the one thing it looked like.
-func TestSteeringIsNeitherARowNorASegment(t *testing.T) {
-	m := newTestTerminal()
+// The queue is announced as a state, never as a number, and only while it is
+// true. The words are the sender's whole question — "did my prompt get taken?" —
+// so the row says "steering queued" and drops it the moment the batch is settled;
+// how many prompts are waiting is not a fact a reader can act on, and a count was
+// what it looked like. The status bar carries neither: it describes the run.
+func TestSteeringIsAFactOnTheRowAndNowhereElse(t *testing.T) {
+	m := liveEdgeFixture(20)
 	m.screenWidth = 200
 
 	steeringPhase(t, m.out, "queued", "")
-	steeringPhase(t, m.out, "queued", "")
-
-	if got := stripANSI(m.renderLiveEdge()); strings.Contains(got, "steering") {
-		t.Errorf("live edge = %q, want the position and nothing about the queue", got)
+	if got := stripANSI(m.renderLiveEdge()); got != "- following, steering queued -" {
+		t.Errorf("live edge = %q, want the waiting fact beside the position", got)
 	}
+
+	steeringPhase(t, m.out, "queued", "") // a second submission: still one fact
+	if got := stripANSI(m.renderLiveEdge()); got != "- following, steering queued -" {
+		t.Errorf("live edge after a second submission = %q, want the same one fact", got)
+	}
+
+	steeringPhase(t, m.out, "delivered", "")
+	if got := stripANSI(m.renderLiveEdge()); strings.Contains(got, "steering") {
+		t.Errorf("live edge after delivery = %q, want the position only", got)
+	}
+
 	m = m.updateStatus()
 	if strings.Contains(m.statusLeft, "steering") {
 		t.Errorf("statusLeft = %q, want no steering segment", m.statusLeft)

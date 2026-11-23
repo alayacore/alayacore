@@ -71,9 +71,9 @@ func (r diffRow) marker() string {
 func (r diffRow) text() string {
 	switch r.kind {
 	case rowElidedUnchanged:
-		return lineCountText(r.count, "hidden")
+		return lineCountText(r.count)
 	case rowElidedTooLarge:
-		return lineCountText(r.count, "hidden") + ", too large to diff"
+		return lineCountText(r.count) + ", too large to diff"
 	default:
 		return r.line
 	}

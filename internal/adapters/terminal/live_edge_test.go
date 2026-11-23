@@ -27,21 +27,29 @@ func TestLiveEdgeText(t *testing.T) {
 		name       string
 		following  bool
 		linesBelow int
+		steering   bool
 		want       string
 	}{
-		{"following", true, 0, "following"},
+		{"following", true, 0, false, "following"},
 		// The two cannot be true together (following pins the viewport to
 		// the bottom), but following wins if a caller ever passes both.
-		{"following wins over a count", true, 7, "following"},
-		{"several lines below", false, 7, "7 lines below"},
-		{"one line below", false, 1, "1 line below"},
-		{"nothing below, nothing to say", false, 0, ""},
+		{"following wins over a count", true, 7, false, "following"},
+		{"several lines hidden", false, 7, false, "7 lines hidden"},
+		{"one line hidden", false, 1, false, "1 line hidden"},
+		{"nothing to say", false, 0, false, ""},
+		// The waiting prompt rides alongside the position fact, whichever it
+		// is, and says one word rather than a count.
+		{"following and a queued prompt", true, 0, true, "following, steering queued"},
+		{"hidden lines and a queued prompt", false, 1, true, "1 line hidden, steering queued"},
+		// It stands alone in the one state with no position to report
+		// (scrolled back to the last line without re-enabling follow).
+		{"queued prompt alone", false, 0, true, "steering queued"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := liveEdgeText(tc.following, tc.linesBelow); got != tc.want {
-				t.Errorf("liveEdgeText(%v, %d) = %q, want %q",
-					tc.following, tc.linesBelow, got, tc.want)
+			if got := liveEdgeText(tc.following, tc.linesBelow, tc.steering); got != tc.want {
+				t.Errorf("liveEdgeText(%v, %d, %v) = %q, want %q",
+					tc.following, tc.linesBelow, tc.steering, got, tc.want)
 			}
 		})
 	}
@@ -55,12 +63,13 @@ func TestLiveEdgeText(t *testing.T) {
 // of the label without the user having scrolled anything).
 func TestLiveEdgeWidthNeverChangesTheFacts(t *testing.T) {
 	m := liveEdgeFixture(20)
+	steeringPhase(t, m.out, "queued", "")
 	m.display = m.display.MarkUserScrolled().ScrollUp(5)
 	m = m.updateDisplayHeight()
 
 	full := stripANSI(m.renderLiveEdge())
-	if full != "- 5 lines below -" {
-		t.Fatalf("fixture: live edge = %q, want the position label", full)
+	if full != "- 5 lines hidden, steering queued -" {
+		t.Fatalf("fixture: live edge = %q, want both facts", full)
 	}
 	needed := Width(full)
 
@@ -122,18 +131,18 @@ func TestLiveEdgeCountsHiddenLines(t *testing.T) {
 	if got := m.display.LinesBelow(); got != 5 {
 		t.Fatalf("LinesBelow() = %d after ScrollUp(5), want 5", got)
 	}
-	if got := stripANSI(m.renderLiveEdge()); got != "- 5 lines below -" {
+	if got := stripANSI(m.renderLiveEdge()); got != "- 5 lines hidden -" {
 		t.Errorf("renderLiveEdge() = %q, want the framed line count", got)
 	}
 
-	// One line of slack reads singular, not "1 lines below".
+	// One line of slack reads singular, not "1 lines hidden".
 	m.display = m.display.ScrollDown(4)
 	m = m.updateDisplayHeight()
 	if got := m.display.LinesBelow(); got != 1 {
 		t.Fatalf("LinesBelow() = %d after scrolling 4 of 5 back down, want 1", got)
 	}
-	if got := stripANSI(m.renderLiveEdge()); got != "- 1 line below -" {
-		t.Errorf("one line below: got %q", got)
+	if got := stripANSI(m.renderLiveEdge()); got != "- 1 line hidden -" {
+		t.Errorf("one line hidden: got %q", got)
 	}
 
 	// Scrolled back to the very last line without re-enabling follow: the
@@ -181,7 +190,7 @@ func TestLiveEdgeReadsStateAtRenderTime(t *testing.T) {
 	if before == after {
 		t.Fatalf("live edge did not change after navigation (both %q)", after)
 	}
-	if !strings.Contains(after, "lines below") {
+	if !strings.Contains(after, "lines hidden") {
 		t.Errorf("after scrolling back, live edge = %q, want the hidden-line count", after)
 	}
 	if status := stripANSI(m.renderStatusBar()); status != statusBefore {
@@ -317,7 +326,7 @@ func TestLiveEdgeColors(t *testing.T) {
 
 // TestLiveEdgeRepaintLeavesNoResidue covers the marker row through the
 // screen's row diff. The row is CUP-anchored and its text changes length
-// with the state — "- 23 lines below -" shrinking to "- following -", or
+// with the state — "- 23 lines hidden -" shrinking to "- following -", or
 // the whole marker going quiet — and a repainted overlay row that shrinks
 // must have its old tail erased, or the frame keeps a stale fragment of the
 // previous count.
@@ -362,7 +371,7 @@ func TestLiveEdgeRepaintLeavesNoResidue(t *testing.T) {
 	if far.display.YOffset() == 0 {
 		t.Fatal("fixture: the scroll clamped at the top — the count below would be the document length, not the scroll")
 	}
-	if got := stripANSI(far.renderLiveEdge()); got != "- 23 lines below -" {
+	if got := stripANSI(far.renderLiveEdge()); got != "- 23 lines hidden -" {
 		t.Fatalf("fixture: got %q, want the 23-line count", got)
 	}
 	grid := paint(t, far, m)

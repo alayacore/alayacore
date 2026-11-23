@@ -3,8 +3,9 @@ package terminal
 // The live-edge row: the transcript's closing line, drawn on the one row
 // between the last message and the input box's top rule.
 //
-//	- following -              new output lands right here
-//	- 12 lines below -         you are scrolled back; that much is hidden
+//	- following -                    new output lands right here
+//	- 12 lines hidden -              you are scrolled back; that much is hidden
+//	- following, steering queued -   your prompt is waiting for the running task
 //
 // It replaces the "F↓" segment of the status bar, which had two problems.
 // It reported a fact about the transcript from the row *below the input
@@ -29,21 +30,37 @@ package terminal
 // decoration — is why the row keeps quiet there instead of stating what is
 // not the case.
 //
-// The steering queue is deliberately not here. It was a "2 steering" segment
-// for a while, and it was wrong twice over: the session takes the whole queue in
-// one go, so "2" said nothing a reader could act on, and a number invites the
-// reader to believe the batch is sent piecemeal. Whether words are waiting is
-// still a fact the UI uses — the cancel dialog asks it before offering to keep
-// them (keybinds.go) — but it belongs to that question, not to a row about where
-// the viewport is.
+// The row carries a second kind of fact: `steering queued` while the session has
+// accepted a prompt for the running task and has not delivered it yet — a word,
+// never a number. The batch is taken whole (spliced into the next step's request,
+// or dropped with the task), so "how many" is not something a reader can act on,
+// and a count would suggest a queue that drains a prompt at a time. The one word
+// says the two things the sender needs: your words were taken, and they are not
+// lost in a void.
+//
+// It is here rather than in the status bar for one reason: where the eye is. A
+// prompt is typed at the input box, and the status bar is the row *below* it —
+// the one part of the frame a reader watching their own words has no reason to
+// look at. This row is directly above the box, on the boundary between what came
+// back and what is about to be sent, which is where "the words I typed are
+// waiting" belongs. The fact clears on the session's own report that the batch
+// was delivered or dropped, so it is present exactly while it is true, and the
+// words themselves appear in the transcript at the splice — the row says
+// "waiting", the next thing the reader sees is them arriving.
+//
+// Two facts, one line: they are comma-joined ("following, steering queued") and
+// either stands alone when the other is silent. A comma, not the " | " a chrome
+// row lists FIELDS with (the status bar, the help bars): this row is a lowercase
+// phrase framed by two hyphens, and ", " reads as one.
 //
 // The row says what it says at every width. A terminal too narrow for the
 // label cuts the phrase between the two hyphens — the frame stays, because it
 // is what makes the row a marker rather than a stray line of text, and because
 // the alternative is a readout whose content is a function of how the user
-// sized their window ("12 lines below" one resize ago, "N lines hidden" the
-// next). The phrase is cut from its end; a row too narrow to hold the frame and
-// even one cell of label reports nothing and stays blank.
+// sized their window ("12 lines hidden" one resize ago, "steering queued" the
+// next). The phrase is cut from its end, so what a very narrow row loses is the
+// second fact; a row too narrow to hold the frame and even one cell of label
+// reports nothing and stays blank.
 //
 // Color: dim. This row sits directly above the input box's top rule, and
 // dim is what that rule and every other border is drawn with, so the label
@@ -92,56 +109,84 @@ const (
 	// ("Follow the last window"), so pressing it and watching this appear
 	// explains the key without a manual.
 	liveEdgeFollowing = "following"
+
+	// liveEdgeSteering is the label while the session holds a prompt for the
+	// running task. The phrase is the one the session reports the lifecycle
+	// with — one status, one name — and it carries no number: see the note at
+	// the top of this file for why a count would be a lie.
+	liveEdgeSteering = "steering queued"
+
+	// liveEdgeSeparator joins the row's two facts when both have something
+	// to say. A comma, not the " | " of a chrome row's field list (the
+	// status bar, the help bars): this row is a phrase, and ", " reads as
+	// one. ASCII, so it is one cell in every terminal (constants.go).
+	liveEdgeSeparator = ", "
 )
 
-// lineCountText spells a count of hidden lines out: "1 line below", "12 lines
-// below", "412 lines hidden". Singular for one — "1 lines below" is the kind of
-// thing a reader notices — and shared by all three places that count lines the
-// frame did not draw (the live edge's "below", the pinned row's "hidden", an
-// edit_file block's "hidden"), so they cannot disagree about how to say it.
+// lineCountText spells a count of lines the frame did not draw out: "1 line
+// hidden", "12 lines hidden". Singular for one — "1 lines hidden" is the kind of
+// thing a reader notices — and shared by the three places that count such lines,
+// so they cannot disagree about how to say it.
 //
-// They count different things and say so: the live edge counts DOCUMENT lines
-// under the viewport (any window), the pinned row counts the lines of THE ONE
-// window whose own line it is drawing (the message you are in the middle of),
-// and the diff block counts unchanged lines between two hunks — the only one of
-// the three where the hidden lines are known to be uninteresting. See
-// liveEdgeText, Window.pinnedLine0 and diffRow.text.
-func lineCountText(n int, word string) string {
+// They count different things and say the same true thing about each: the live
+// edge counts DOCUMENT lines under the viewport (any window), the pinned row
+// counts the lines of THE ONE window whose own line it is drawing (the message
+// you are in the middle of), and the diff block counts unchanged lines between
+// two hunks — the only one of the three where the hidden lines are known to be
+// uninteresting. Which lines they are is the row's own context (see
+// liveEdgeText, Window.pinnedLine0 and diffRow.text).
+func lineCountText(n int) string {
 	if n == 1 {
-		return "1 line " + word
+		return "1 line hidden"
 	}
-	return fmt.Sprintf("%d lines %s", n, word)
+	return fmt.Sprintf("%d lines hidden", n)
 }
 
 // liveEdgeText returns the plain label for the current display state, or "" when
-// the row has nothing to report. `following` and `linesBelow` describe the same
-// fact (where the viewport is), so they never both contribute.
-func liveEdgeText(following bool, linesBelow int) string {
+// the row has nothing to report: the viewport's position and, when a prompt is
+// waiting, the fact that it is, comma-joined. `following` and `linesBelow`
+// describe the same fact (where the viewport is), so they never both contribute.
+func liveEdgeText(following bool, linesBelow int, steeringQueued bool) string {
+	position := ""
 	switch {
 	case following:
-		return liveEdgeFollowing
+		position = liveEdgeFollowing
 	case linesBelow > 0:
-		return lineCountText(linesBelow, "below")
+		position = lineCountText(linesBelow)
+	}
+	steering := ""
+	if steeringQueued {
+		steering = liveEdgeSteering
+	}
+	switch {
+	case position == "":
+		return steering
+	case steering == "":
+		return position
 	default:
-		return ""
+		return position + liveEdgeSeparator + steering
 	}
 }
 
 // renderLiveEdge renders the live-edge row, or "" when it has nothing to
 // say (the row is still reserved — see liveEdgeRows).
 //
-// The label is read at render time rather than baked into a cached string: the
+// Both facts are read at render time rather than baked into a cached string: the
 // "F↓" this replaces lived inside m.statusLeft, which updateStatus rebuilds only
 // when the session status version moves — while the state it shows flips on
 // j/k/G/scroll, none of which move that version. That mismatch was a real
 // staleness bug and needed a last-rendered-value tracker to patch; View()
 // re-derives the row from the live state, so the bug cannot recur here
-// (TestLiveEdgeReadsStateAtRenderTime is its regression test).
+// (TestLiveEdgeReadsStateAtRenderTime is its regression test). The steering fact
+// comes from a status snapshot per render for the same reason — it is live state,
+// not a cached segment — and that snapshot takes sessionState.mu on its own,
+// never nested under WindowBuffer.mu (the lock order output.go records).
 func (m Terminal) renderLiveEdge() string {
 	if m.screenWidth <= 0 {
 		return ""
 	}
-	label := liveEdgeText(m.display.shouldFollow(), m.display.LinesBelow())
+	label := liveEdgeText(m.display.shouldFollow(), m.display.LinesBelow(),
+		m.out.SnapshotStatus().SteeringQueued)
 	if label == "" {
 		return ""
 	}

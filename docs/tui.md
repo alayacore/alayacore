@@ -683,10 +683,11 @@ own row is not in the count either: the pin draws it, at screen row 0. So the
 number is "rows of this message that are not drawn anywhere", and it is the same
 number as the rows to scroll up to see the message from its first row.
 
-`lineCountText` spells it (and the live edge's "N lines below") out, so the two
-phrasings cannot drift; they count different things and the words say so: the
-live edge counts document lines under the viewport (any window), this counts one
-window's own rows that are off screen.
+`lineCountText` spells it (and the live edge's "N lines hidden") out, so the two
+phrasings cannot drift. They count different things — the live edge counts
+document lines under the viewport (any window), this counts one window's own rows
+that are off screen — but both words are true, and which lines they are is the
+row's own context.
 
 Its own field is separated from the timestamp by ` | `, which is how this UI
 separates fields on a chrome row: the status bar (`renderStatusSegments`) and
@@ -743,35 +744,45 @@ behavior, the boundaries and the cost.
 The state reads on the **live edge** — the one row between the last message
 and the prompt box's top rule, which is where the newest line arrives. It says
 `- following -` while auto-follow is on, counts what the viewport hides
-otherwise (`- 12 lines below -`), and stays blank when it has nothing to say
+otherwise (`- 12 lines hidden -`), and stays blank when it has nothing to say
 (scrolled back to the last line: the whole transcript is on screen).
 
-It says **nothing about the steering queue**, and that is deliberate. It used to:
-`2 steering`, the prompts accepted for the running task and not yet delivered.
-The number was the problem. The session takes the queue whole — one splice or one
-drop, never piecemeal — so "how many" is not a fact a reader can act on, and a
-number suggests a batch that drains one prompt at a time. Whether words are
-waiting is still used, by the one question it changes the answer to: `Ctrl+G`
-offers to *keep* them instead of dropping them with the task, and only when there
-are any (see [Keys](#keys)). That fact lives in the session state and is read when
-the dialog opens, not on a row that is about where the viewport is.
+It carries a second fact while a prompt is waiting: **`steering queued`**, one
+word and never a number. The words a user typed mid-task are accepted the moment
+they are sent but reach the model at the task's next step boundary — a whole tool
+call away, or behind a compaction — so without this the gesture has no
+acknowledgement until the echo lands. The row says the fact, the session clears it
+when it splices or drops the batch, and the words themselves then appear in the
+transcript: "waiting" is followed by them arriving, and nothing in between.
 
-So the row has one fact again — the viewport's position — stated as a lowercase
-phrase framed by two hyphens (`- following -`, `- 12 lines below -`), cut from its
-end when the terminal is too narrow for it (`- 5 lines bel… -`) with the frame
-kept. Nothing else rides on it, so nothing about it can disagree with another
-surface. What it says must not be a function of how the user sized their
-window — otherwise a resize takes a word out of the label with nothing scrolled
-and the next resize brings it back; the cut comes off the end of the phrase, and
-a row too narrow for the frame and one cell of label draws nothing at all
+Why a word and not a count (it used to read `2 steering`): the session takes the
+whole queue in one take — one splice or one drop, never piecemeal — so "how many"
+is not a fact a reader can act on, and a number suggests a queue that drains a
+prompt at a time. The one question the count might answer is already answered
+better by `Ctrl+G`, which offers to *keep* the words instead of dropping them with
+the task, and only when there are any (see [Keys](#keys)).
+
+The two facts are comma-joined (`- following, steering queued -`,
+`- 5 lines hidden, steering queued -`) and either stands alone when the other is
+silent — the waiting fact alone is all there is to say in the one state with no
+position to report. A comma, not the ` | ` a chrome row lists fields with (see
+[Sticky Window Line](#sticky-window-line)): this row is a lowercase phrase framed
+by two hyphens, and `, ` reads as one. Like the frame, the comma is ASCII, so it
+is one cell in every terminal.
+
+What the row says must not be a function of how the user sized their window —
+otherwise a resize takes a word out of the label with nothing scrolled and the
+next resize brings it back. A terminal too narrow for the phrase cuts it between
+the hyphens (`- 5 lines hid… -`), keeping the frame; the cut comes off the end, so
+a very narrow row loses the waiting fact first, and a row too narrow for the frame
+and one cell of label draws nothing at all
 (`TestLiveEdgeWidthNeverChangesTheFacts`).
 
 It counts **document** lines under the viewport, whatever window they belong to
 — a total, not a per-message figure; the pinned row's `N lines hidden` is the
 other kind, counting one message's own hidden lines (see
 [Sticky Window Line](#sticky-window-line)). Both are spelled by
-`lineCountText`, which is what keeps "1 line below" and "1 line hidden" from
-being written differently in two places.
+`lineCountText`, so "1 line hidden" cannot be written two ways.
 
 The row belongs to the layout whether or not it carries text.
 `updateDisplayHeight` reserves it (`liveEdgeRows`), because a row that appeared

@@ -258,7 +258,7 @@ func TestPinnedRowCountsItsOwnHiddenLines(t *testing.T) {
 				rows := stickyRows(t, wb, winStart+k, 10)
 				want := fmt.Sprintf("%d lines hidden", k)
 				if k == 1 {
-					want = "1 line hidden" // singular, like the live edge's "1 line below"
+					want = "1 line hidden" // singular, like the live edge's "1 line hidden"
 				}
 				if !strings.Contains(rows[0], want) {
 					t.Errorf("viewport %d rows into the message: row 0 = %q, want %q",

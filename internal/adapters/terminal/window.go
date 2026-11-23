@@ -627,7 +627,7 @@ func (w *Window) pinnedLine0(linesAbove int, isWindowCursor bool) string {
 	if isWindowCursor {
 		styles = styles.Selected()
 	}
-	w.cache.pinnedRow = w.buildUnfoldedHeader(w.cache.width, styles, lineCountText(linesAbove, "hidden"))
+	w.cache.pinnedRow = w.buildUnfoldedHeader(w.cache.width, styles, lineCountText(linesAbove))
 	w.cache.pinnedAbove = linesAbove
 	w.cache.pinnedCursor = isWindowCursor
 	w.cache.pinnedDone = true
