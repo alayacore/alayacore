@@ -92,6 +92,22 @@ func commandHelpItems(nextID func() int) []HelpItem {
 	return items
 }
 
+// buildHelpItems assembles the window: the Commands section generated from the
+// vocabulary (commandHelpItems), then three key sections written out here.
+//
+// The three are hand-kept, and that is the decision rather than a shortcut. A
+// command can be generated because a command is a row in a table; a keybinding
+// is not — its body is the behavior (a count consumed, a viewport clamped, an
+// editor opened), so there is nothing to generate from. Building that table
+// would mean rewriting the three handlers into closures for a list that has
+// changed six times in this project's life, and it would not even leave one
+// copy: a {key, description} table read by a switch still has two.
+//
+// The drift this risks is one missing row, which is what Esc was — Display Mode
+// listed the count prefix `N` and not the key that drops an armed count, for
+// months, with nothing in the UI actually wrong. So: when a binding is added,
+// removed or moved in keybinds.go or display.go, re-read these three sections
+// before committing.
 func buildHelpItems() []HelpItem {
 	id := 0
 	nextID := func() int {
