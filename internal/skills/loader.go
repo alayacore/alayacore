@@ -242,11 +242,6 @@ func (m *Manager) loadSkillMetadata(skillFile, dirName string) (Skill, []string,
 	}, problems, nil
 }
 
-// GetMetadata returns all skill metadata for system prompt injection
-func (m *Manager) GetMetadata() []Skill {
-	return m.skills
-}
-
 // GenerateSystemPromptFragment generates the XML fragment for system prompt
 func (m *Manager) GenerateSystemPromptFragment() string {
 	if len(m.skills) == 0 {

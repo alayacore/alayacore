@@ -39,8 +39,8 @@ func TestPromptFragmentIsWellFormedForHostileMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := NewManager([]string{cont})
-	if len(m.GetMetadata()) != 1 {
-		t.Fatalf("loaded %d skills, want 1 (from %s)", len(m.GetMetadata()), dir)
+	if len(m.skills) != 1 {
+		t.Fatalf("loaded %d skills, want 1 (from %s)", len(m.skills), dir)
 	}
 
 	fragment := m.GenerateSystemPromptFragment()

@@ -157,7 +157,7 @@ This is a test skill.`
 	// Test manager
 	m := NewManager([]string{tmpDir})
 
-	metadata := m.GetMetadata()
+	metadata := m.skills
 	if len(metadata) != 1 {
 		t.Errorf("Expected 1 skill, got %d", len(metadata))
 	}
@@ -200,7 +200,7 @@ description: A test skill
 
 	m := NewManager([]string{tmpDir})
 
-	metadata := m.GetMetadata()
+	metadata := m.skills
 	if len(metadata) != 1 {
 		t.Fatalf("Expected 1 skill, got %d", len(metadata))
 	}
@@ -214,7 +214,7 @@ description: A test skill
 func TestEmptySkillsDir(t *testing.T) {
 	m := NewManager([]string{})
 
-	metadata := m.GetMetadata()
+	metadata := m.skills
 	if len(metadata) != 0 {
 		t.Errorf("Expected 0 skills, got %d", len(metadata))
 	}
@@ -269,7 +269,7 @@ description: Second skill from directory 2
 	// Test manager with multiple paths
 	m := NewManager([]string{tmpDir1, tmpDir2})
 
-	metadata := m.GetMetadata()
+	metadata := m.skills
 	if len(metadata) != 2 {
 		t.Errorf("Expected 2 skills from multiple directories, got %d", len(metadata))
 	}
@@ -321,7 +321,7 @@ description: Skill from second directory
 	// First path doesn't exist — should still discover skills from second path
 	m := NewManager([]string{missingDir, tmpDir})
 
-	metadata := m.GetMetadata()
+	metadata := m.skills
 	if len(metadata) != 1 {
 		t.Fatalf("Expected 1 skill (from second dir), got %d", len(metadata))
 	}
@@ -356,7 +356,7 @@ func TestDuplicateSkillNames(t *testing.T) {
 
 	m := NewManager([]string{tmpDir1, tmpDir2})
 
-	metadata := m.GetMetadata()
+	metadata := m.skills
 	if len(metadata) != 1 {
 		t.Fatalf("Expected 1 skill (the first container wins), got %d", len(metadata))
 	}

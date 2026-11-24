@@ -77,7 +77,7 @@ func TestMissingContainerIsReportedAsANotice(t *testing.T) {
 
 	missing := filepath.Join(t.TempDir(), "no-such-folder")
 	m := NewManager([]string{missing, good})
-	if n := len(m.GetMetadata()); n != 1 {
+	if n := len(m.skills); n != 1 {
 		t.Fatalf("loaded %d skills, want pdf still loaded", n)
 	}
 	if !hasNotice(m, "does not exist") {
@@ -132,7 +132,7 @@ func TestManifestProblemsReachStartupErrors(t *testing.T) {
 	}
 
 	m := NewManager([]string{container})
-	if n := len(m.GetMetadata()); n != 1 {
+	if n := len(m.skills); n != 1 {
 		t.Fatalf("loaded %d skills, want the skill kept", n)
 	}
 	if !hasLoadError(m, "duplicate key") {

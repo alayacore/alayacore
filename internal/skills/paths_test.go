@@ -29,10 +29,10 @@ func TestRelativeContainerAdvertisesAnAbsoluteLocation(t *testing.T) {
 	t.Chdir(root)
 	m := NewManager([]string{"./skills"})
 
-	if n := len(m.GetMetadata()); n != 1 {
+	if n := len(m.skills); n != 1 {
 		t.Fatalf("loaded %d skills from a relative container, want 1", n)
 	}
-	loc := m.GetMetadata()[0].Location
+	loc := m.skills[0].Location
 	if !filepath.IsAbs(loc) {
 		t.Errorf("location = %s, want an absolute path", loc)
 	}
@@ -104,10 +104,10 @@ func TestNormalizationLeavesLinkedContainersAlone(t *testing.T) {
 	}
 
 	m := NewManager([]string{link})
-	if n := len(m.GetMetadata()); n != 1 {
+	if n := len(m.skills); n != 1 {
 		t.Fatalf("loaded %d skills through a symlinked container, want 1", n)
 	}
-	if got, want := m.GetMetadata()[0].Location, filepath.Join(link, "pdf", manifestFileName); got != want {
+	if got, want := m.skills[0].Location, filepath.Join(link, "pdf", manifestFileName); got != want {
 		t.Errorf("location = %s, want the path through the link (%s)", got, want)
 	}
 }

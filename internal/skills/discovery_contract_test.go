@@ -23,7 +23,7 @@ func writeSkill(t *testing.T, root, dir string) string {
 }
 
 func loadedNames(m *Manager) []string {
-	skills := m.GetMetadata()
+	skills := m.skills
 	out := make([]string, 0, len(skills))
 	for _, s := range skills {
 		out = append(out, s.Name)
@@ -61,7 +61,7 @@ func TestSkillDirectoryAsPathLoadsNothing(t *testing.T) {
 	skill := writeSkill(t, filepath.Join(root, "skills"), "weather")
 
 	m := NewManager([]string{skill})
-	if n := len(m.GetMetadata()); n != 0 {
+	if n := len(m.skills); n != 0 {
 		t.Fatalf("loaded %d skills from the skill's own directory, want 0", n)
 	}
 	if errs := m.GetLoadErrors(); len(errs) != 0 {
@@ -126,7 +126,7 @@ func TestNameMustMatchDirectoryName(t *testing.T) {
 	}
 
 	m := NewManager([]string{root})
-	if n := len(m.GetMetadata()); n != 0 {
+	if n := len(m.skills); n != 0 {
 		t.Errorf("loaded %d skills, want 0: a mismatched name must not reach the prompt", n)
 	}
 	errs := m.GetLoadErrors()
@@ -169,7 +169,7 @@ func TestSymlinkedSkillDirectoryIsFollowed(t *testing.T) {
 	}
 	// <location> names the path through the container — the one the user arranged
 	// — not the folder the link points at.
-	if loc := m.GetMetadata()[0].Location; loc != filepath.Join(container, "pdf", "SKILL.md") {
+	if loc := m.skills[0].Location; loc != filepath.Join(container, "pdf", "SKILL.md") {
 		t.Errorf("location = %s, want the path through the container", loc)
 	}
 	if errs := m.GetLoadErrors(); len(errs) != 0 {
@@ -198,7 +198,7 @@ func TestLinkThatIsNotADirectoryStaysInvisible(t *testing.T) {
 	}
 
 	m := NewManager([]string{container})
-	if n := len(m.GetMetadata()); n != 0 {
+	if n := len(m.skills); n != 0 {
 		t.Errorf("loaded %d skills, want 0", n)
 	}
 	if errs := m.GetLoadErrors(); len(errs) != 0 {

@@ -490,9 +490,10 @@ func (wb *WindowBuffer) SetCreatedAt(id string, t time.Time) {
 	wb.markDirty(idx)
 }
 
-// AllWindows returns a copy of the windows slice for snapshotting.
-// The returned slice contains the same *Window pointers (no deep copy).
-// Each window's Content is built from parts before returning.
+// AllWindows returns the windows slice, copied under the buffer's lock so a
+// caller can iterate it without holding the lock. The copy is shallow: the
+// elements are the same *Window pointers, carrying whatever state the last
+// writer left on them.
 func (wb *WindowBuffer) AllWindows() []*Window {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()

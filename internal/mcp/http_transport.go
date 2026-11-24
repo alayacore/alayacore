@@ -358,7 +358,12 @@ func (t *HTTPTransport) doPOST(ctx context.Context, req jsonrpcRequest) (*http.R
 		return nil, err
 	}
 
-	// If 401 and we have an auth provider, clear cached token and retry once.
+	// If 401 and we have an auth provider, retry once. The token is not
+	// invalidated first: auth.PersistentTokenProvider.InvalidateToken also
+	// deletes the credential from disk, and a 401 does not say the token is
+	// bad — a server-side hiccup, a rotated endpoint or a proxy answering in
+	// the server's place all look identical from here. A second attempt costs
+	// one request; deleting what the user authorized costs a re-authorization.
 	if resp.StatusCode == http.StatusUnauthorized && t.authProvider != nil {
 		resp.Body.Close()
 		resp, err = t.doPOSTOnce(ctx, req)

@@ -315,9 +315,16 @@ func (p *PersistentTokenProvider) doRefreshRequest(req *http.Request, oldRefresh
 	return token, nil
 }
 
-// InvalidateToken clears the cached token and optionally deletes the
-// persisted token from disk. This forces the next Token() call to
-// fall back to the inner provider.
+// InvalidateToken clears the cached token and deletes the persisted one from
+// disk, so the next Token() call falls back to the inner provider — in practice
+// a fresh authorization.
+//
+// No production path calls it. The one that looks like it should — the 401
+// retry in mcp's HTTPTransport.doPOST — does not, for the reason written there:
+// the disk delete turns "the server refused this request" into "the user must
+// authorize again", and a 401 cannot tell a bad token from a refusal.
+// TestPersistentTokenProvider_Invalidate is what keeps the two halves (cache,
+// disk) honest until something does call it.
 func (p *PersistentTokenProvider) InvalidateToken(_ context.Context) error {
 	p.mu.Lock()
 	p.cached = nil
