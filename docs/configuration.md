@@ -45,7 +45,7 @@ alayacore --config-path ./my-project-config
 
 **Location**: `<config-path>/model.conf`
 
-This file defines one or more LLM models that AlayaCore can use. It is auto-created with a default Ollama configuration on first run. Models replaced via `:model_sync` are persisted back to this file automatically.
+This file defines one or more LLM models that AlayaCore can use. It is auto-created with a default Ollama configuration on first run, and it is the only place models are written: edit it and send `:model_load` to apply the change to a running session.
 
 ### Format
 

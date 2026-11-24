@@ -29,7 +29,6 @@ const (
 	CommandNameSave      = "save"
 	CommandNameModelSet  = "model_set"
 	CommandNameModelLoad = "model_load"
-	CommandNameModelSync = "model_sync"
 	// The setting's name plus the verb: the setters here are scope+verb
 	// (model_set, theme_set), and the scope is reasoning_level — the name it has
 	// in the frontmatter, on --reasoning-level, and in the SM that broadcasts it.

@@ -145,7 +145,7 @@ func (SteeringMsg) SystemMsgType() string { return string(MsgTypeSteering) }
 // that the newer one exists. What moved at each generation, and whether
 // converting a session file takes more than editing that line, is
 // docs/architecture.md's "Wire version history".
-const MessageVersion = 18
+const MessageVersion = 19
 
 // MessageVersionMsg carries the adapter protocol version and the alayacore
 // application version (type "version"). It is the first TagSystemMsg frame of a

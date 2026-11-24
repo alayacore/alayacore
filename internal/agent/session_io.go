@@ -632,10 +632,12 @@ func (s *Session) execCommand(ctx context.Context, commandID string, cmdDef comm
 }
 
 // ============================================================================
-// Model commands — handleModelSet, handleModelLoad, handleModelSync
+// Model commands — handleModelSet, handleModelLoad
 //
-// These commands manage model configuration: switching the active model,
-// reloading from file, and syncing from an adapter editor session.
+// These commands manage model configuration: switching the active model, and
+// reloading it from the config file. The config file is the only writer's
+// target — there is no command that takes a model list from the wire, so an
+// adapter that edits models edits model.conf and sends :model_load.
 // ============================================================================
 
 // checkModelManager is a shared preamble for model handlers. Returns the
@@ -713,33 +715,6 @@ func (s *Session) handleModelLoad() (any, error) {
 	s.sendModelListMsg()
 
 	if msgs := mm.getLoadErrors(); len(msgs) > 0 {
-		return nil, &cmdErr{Code: protocol.ErrCodeConfigModelInvalid, Message: strings.Join(msgs, "; ")}
-	}
-	return map[string]any{"models": mm.getModels()}, nil
-}
-
-// handleModelSync replaces all models with JSON content from an adapter
-// editor session. The JSON is received as a single string (cut on first
-// space), so string values with spaces (e.g. model names) are preserved.
-func (s *Session) handleModelSync(args string) (any, error) {
-	mm, err := s.checkModelManager()
-	if err != nil {
-		return nil, err
-	}
-
-	msgs := mm.syncFromContent(args)
-
-	// Apply the successfully synced models, then fail the command if any
-	// model was rejected or persistence failed.
-	s.modelService.ResolveActiveModel()
-	if model := mm.getActive(); model != nil {
-		if err := s.SwitchModel(model); err != nil {
-			return nil, &cmdErr{Code: protocol.ErrCodeConfigModelFailed, Message: "Failed to reinitialize model after sync: " + err.Error()}
-		}
-	}
-	s.sendModelListMsg()
-
-	if len(msgs) > 0 {
 		return nil, &cmdErr{Code: protocol.ErrCodeConfigModelInvalid, Message: strings.Join(msgs, "; ")}
 	}
 	return map[string]any{"models": mm.getModels()}, nil

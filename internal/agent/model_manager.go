@@ -1,14 +1,14 @@
 package agent
 
 // modelManager is responsible for loading model definitions from a
-// key-value config file (model.conf) and managing them in memory.
-// All persistence is handled internally; adapters interact via frames.
+// key-value config file (model.conf) and managing them in memory. It creates
+// that file when it is missing, and never rewrites it afterwards: the file is
+// the user's, the manager only reads it.
 //
 // All methods are called from the session's run() goroutine only, so no
 // synchronization is needed.
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
@@ -21,7 +21,9 @@ import (
 )
 
 // modelManager manages model configurations.
-// It owns both the in-memory model list and the config file on disk.
+// It owns the in-memory model list and the path of the config file it was
+// loaded from; the file itself stays the user's, apart from being created when
+// it is missing.
 type modelManager struct {
 	models      []modelConfig
 	activeID    int
@@ -308,76 +310,6 @@ func (mm *modelManager) getModels() []modelConfig {
 	result := make([]modelConfig, len(mm.models))
 	copy(result, mm.models)
 	return result
-}
-
-// syncFromContent replaces all models with parsed JSON content, persists to the
-// config file, and returns validation messages.  The JSON format matches the
-// protocol.ModelListMsg wire format ([]modelConfig).
-func (mm *modelManager) syncFromContent(content string) []string {
-	var models []modelConfig
-	if err := json.Unmarshal([]byte(content), &models); err != nil {
-		return []string{fmt.Sprintf("model_sync: invalid JSON: %v", err)}
-	}
-
-	valid := make([]modelConfig, 0, len(models))
-	var msgs []string
-	for i, m := range models {
-		if errs := validateModel(m); len(errs) > 0 {
-			for _, err := range errs {
-				msgs = append(msgs, fmt.Sprintf("model %d: %s", i+1, err))
-			}
-			continue
-		}
-		valid = append(valid, m)
-	}
-
-	// If all models were rejected, don't touch current state.
-	if len(valid) == 0 && len(models) > 0 {
-		// Still reflect the outcome in the flag: after this sync there are
-		// no usable models (the previous models are kept, but the rejection
-		// must be visible). Mirrors LoadFromFile's all-rejected semantics —
-		// otherwise hasRejected stays stale and the error message would
-		// claim "no models configured" instead of "all models rejected".
-		mm.allRejected = true
-		return msgs
-	}
-
-	// Assign new IDs
-	mm.nextID = 1
-	for i := range valid {
-		valid[i].ID = mm.nextID
-		mm.nextID++
-	}
-
-	mm.models = valid
-	mm.loadErrors = msgs
-	// At least one model is valid (or the sync was empty) — no rejection flag.
-	mm.allRejected = false
-
-	// Persist to config file in key-value format
-	if mm.filePath != "" {
-		if err := mm.writeConfigFile(); err != nil {
-			msgs = append(msgs, fmt.Sprintf("error: failed to persist model config: %v", err))
-		}
-	}
-
-	return msgs
-}
-
-// writeConfigFile persists the current models to the config file in key-value format.
-//
-// The replacement is atomic (internal/atomicfile). model.conf can be the only
-// copy of an API key, and a truncated or half-mixed file is not something a user
-// can repair from memory — an interrupted write, or a second instance saving at
-// the same moment, must leave the previous list intact instead.
-//
-// Atomic does not mean conflict-free: :model_sync replaces the whole list from
-// this process's copy, so of two instances editing the same file the last save
-// still wins. That is the semantics of a full-file editor; what this rules out is
-// the file itself being lost.
-func (mm *modelManager) writeConfigFile() error {
-	data := formatModelList(mm.models)
-	return atomicfile.Write(mm.filePath, []byte(data), 0600)
 }
 
 // getModel returns a model by ID (includes API key for internal use)

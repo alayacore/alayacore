@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -332,108 +331,78 @@ model_name: "model-b"
 	}
 }
 
-// validModelJSON builds a model_sync JSON payload from the given models.
-func validModelJSON(t *testing.T, models ...modelConfig) string {
-	t.Helper()
-	data, err := json.Marshal(models)
-	if err != nil {
-		t.Fatalf("marshal models: %v", err)
-	}
-	return string(data)
-}
-
-// TestSyncFromContentRejectionFlag verifies HasRejected is kept consistent
-// across :model_sync outcomes:
-//   - an all-rejected sync sets HasRejected (regression: it was left stale,
-//     so the error message would claim "no models configured" instead of
-//     "all models rejected");
-//   - a later valid sync clears it;
-//   - an empty sync clears it;
-//   - a mixed sync keeps the valid models and does not flag rejection.
-func TestSyncFromContentRejectionFlag(t *testing.T) {
+// TestAllRejectedFlagAcrossLoads keeps HasRejected consistent with what the
+// reload left behind. It is the flag behind NoModelsErrorMessage, and the
+// failure it guards is a message that blames the wrong cause: a stale false
+// makes a config whose every block was rejected read as "no models configured",
+// which sends the user looking for a missing file instead of a broken one.
+//
+// model.conf is the only way models enter a session, so the flag has exactly
+// one writer — loadFromFile — and that is what this drives.
+func TestAllRejectedFlagAcrossLoads(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "model.conf")
-	if err := os.WriteFile(configPath, []byte(
-		`name: "Model A"
+	write := func(t *testing.T, text string) {
+		t.Helper()
+		if err := os.WriteFile(configPath, []byte(text), 0600); err != nil {
+			t.Fatalf("write config: %v", err)
+		}
+	}
+
+	validA := `name: "Model A"
 protocol_type: "openai"
 base_url: "https://api.example.com"
 api_key: "key1"
 model_name: "model-a"
-`), 0600); err != nil {
-		t.Fatalf("failed to write config file: %v", err)
-	}
+`
+	// Missing every required field: parseable block, rejected model.
+	broken := `name: "Broken"
+`
+	validC := `name: "Model C"
+protocol_type: "anthropic"
+base_url: "https://api.example.com"
+api_key: "key3"
+model_name: "model-c"
+`
 
 	mm := newModelManager(configPath)
-	if !mm.hasModels() {
-		t.Fatal("expected model A to load")
+
+	// A clean load leaves the flag clear.
+	write(t, validA)
+	if err := mm.loadFromFile(configPath); err != nil {
+		t.Fatalf("load: %v", err)
 	}
-	if mm.hasRejected() {
-		t.Fatal("expected HasRejected=false after clean load")
+	if !mm.hasModels() || mm.hasRejected() {
+		t.Fatalf("clean load: hasModels=%v hasRejected=%v, want true/false", mm.hasModels(), mm.hasRejected())
 	}
 
-	invalid := modelConfig{Name: "Broken"} // missing required fields
-
-	// 1. All-rejected sync: flag must become true, current models untouched.
-	msgs := mm.syncFromContent(validModelJSON(t, invalid))
-	if len(msgs) == 0 {
-		t.Fatal("expected validation messages for all-rejected sync")
+	// Every block rejected: the flag must be set, or the next error message
+	// claims nothing is configured.
+	write(t, broken)
+	if err := mm.loadFromFile(configPath); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(mm.getLoadErrors()) == 0 {
+		t.Fatal("expected validation messages for an all-rejected config")
 	}
 	if !mm.hasRejected() {
-		t.Fatal("HasRejected must be true after an all-rejected sync")
-	}
-	if !mm.hasModels() {
-		t.Fatal("all-rejected sync must not wipe the current models")
+		t.Fatal("HasRejected must be true when every block was rejected")
 	}
 
-	// 2. Valid sync clears the flag.
-	msgs = mm.syncFromContent(validModelJSON(t, modelConfig{
-		Name:         "Model B",
-		ProtocolType: "openai",
-		BaseURL:      "https://api.example.com",
-		APIKey:       "key2",
-		ModelName:    "model-b",
-	}))
-	if len(msgs) != 0 {
-		t.Fatalf("expected no validation messages, got %v", msgs)
+	// A valid load clears it again.
+	write(t, validA)
+	if err := mm.loadFromFile(configPath); err != nil {
+		t.Fatalf("load: %v", err)
 	}
 	if mm.hasRejected() {
-		t.Fatal("HasRejected must be false after a valid sync")
-	}
-	if got := len(mm.getModels()); got != 1 {
-		t.Fatalf("expected 1 model after valid sync, got %d", got)
+		t.Fatal("HasRejected must be false after a clean reload")
 	}
 
-	// 3. Empty sync clears the flag and leaves no models.
-	msgs = mm.syncFromContent(validModelJSON(t))
-	if len(msgs) != 0 {
-		t.Fatalf("expected no messages for empty sync, got %v", msgs)
-	}
-	if mm.hasRejected() {
-		t.Fatal("HasRejected must be false after an empty sync")
-	}
-	if mm.hasModels() {
-		t.Fatal("expected no models after empty sync")
-	}
-
-	// 4. All-rejected again from empty state — flag true, still no models.
-	msgs = mm.syncFromContent(validModelJSON(t, invalid))
-	if len(msgs) == 0 {
-		t.Fatal("expected validation messages for all-rejected sync from empty state")
-	}
-	if !mm.hasRejected() {
-		t.Fatal("HasRejected must be true after all-rejected sync from empty state")
-	}
-
-	// 5. Mixed sync: valid models kept, flag cleared.
-	msgs = mm.syncFromContent(validModelJSON(t, invalid, modelConfig{
-		Name:         "Model C",
-		ProtocolType: "anthropic",
-		BaseURL:      "https://api.example.com",
-		APIKey:       "key3",
-		ModelName:    "model-c",
-	}))
-	if len(msgs) == 0 {
-		t.Fatal("expected validation messages for the rejected model in mixed sync")
+	// Mixed: the valid block is kept, the broken one is reported, and the flag
+	// stays clear because a usable model exists.
+	write(t, broken+"---\n"+validC)
+	if err := mm.loadFromFile(configPath); err != nil {
+		t.Fatalf("load: %v", err)
 	}
 	if mm.hasRejected() {
 		t.Fatal("HasRejected must be false when at least one model is valid")
@@ -442,7 +411,8 @@ model_name: "model-a"
 	if len(models) != 1 || models[0].Name != "Model C" {
 		t.Fatalf("expected only Model C, got %v", models)
 	}
-	if !strings.Contains(msgs[0], "Broken") && !strings.Contains(msgs[0], "missing") {
-		t.Fatalf("expected rejection message mentioning the broken model, got %v", msgs)
+	msgs := mm.getLoadErrors()
+	if len(msgs) == 0 || !strings.Contains(strings.Join(msgs, "\n"), "Broken") {
+		t.Fatalf("expected a message naming the rejected block, got %v", msgs)
 	}
 }

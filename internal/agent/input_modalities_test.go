@@ -97,46 +97,41 @@ func TestUnparsableOtherKeyKeepsTheModel(t *testing.T) {
 // TestInputModalitiesAbsentAndEmptyStayApart is the property the whole option
 // rests on: nil is "not declared" (the protocol decides) and an empty list is
 // "takes no media". Both the file format and the model_list broadcast have to
-// keep them apart, or :model_sync silently widens a model.
+// keep them apart, or a consumer reading the wire cannot tell a model that
+// refuses media from one that never said.
 func TestInputModalitiesAbsentAndEmptyStayApart(t *testing.T) {
-	for _, declared := range [][]string{nil, {}} {
-		m := modelConfig{Name: "m", ProtocolType: "openai", BaseURL: "https://x", APIKey: "k", ModelName: "m", InputModalities: declared}
+	const head = "name: m\nprotocol_type: openai\nbase_url: https://x\napi_key: k\nmodel_name: m\n"
 
-		// The file: nil writes no line at all, an empty declaration writes [].
-		file := formatModelList([]modelConfig{m})
-		hasLine := strings.Contains(file, "input_modalities")
-		if hasLine != (declared != nil) {
-			t.Fatalf("declared=%v wrote %q", declared, file)
+	for _, tc := range []struct {
+		name       string
+		line       string // the model.conf line, "" meaning "write no line"
+		undeclared bool
+	}{
+		{"not declared", "", true},
+		{"takes no media", "input_modalities: []\n", false},
+	} {
+		back, msgs := parseModelConfig(head+tc.line, "model.conf")
+		if len(msgs) > 0 {
+			t.Fatalf("%s: unexpected messages: %v", tc.name, msgs)
 		}
-
-		back, _ := parseModelConfig(file, "model.conf")
 		if len(back) != 1 {
-			t.Fatalf("declared=%v: model lost on reload", declared)
+			t.Fatalf("%s: %d models, want 1", tc.name, len(back))
 		}
-		if (back[0].InputModalities == nil) != (declared == nil) {
-			t.Errorf("declared=%v came back as %v from the file", declared, back[0].InputModalities)
+		if (back[0].InputModalities == nil) != tc.undeclared {
+			t.Errorf("%s: parsed as %v, want undeclared=%v", tc.name, back[0].InputModalities, tc.undeclared)
 		}
 
-		// The wire: null for undeclared, [] for a declaration, and the same
-		// distinction after the round trip a :model_sync does.
-		broadcast, err := json.Marshal(toModelInfos([]modelConfig{m}))
+		// The wire: null for undeclared, [] for a declaration.
+		broadcast, err := json.Marshal(toModelInfos(back))
 		if err != nil {
-			t.Fatalf("marshal: %v", err)
+			t.Fatalf("%s: marshal: %v", tc.name, err)
 		}
 		want := `"input_modalities":null`
-		if declared != nil {
+		if !tc.undeclared {
 			want = `"input_modalities":[]`
 		}
 		if !strings.Contains(string(broadcast), want) {
-			t.Errorf("declared=%v broadcast %s, want %s", declared, broadcast, want)
-		}
-
-		var synced []modelConfig
-		if err := json.Unmarshal(broadcast, &synced); err != nil {
-			t.Fatalf("unmarshal: %v", err)
-		}
-		if (synced[0].InputModalities == nil) != (declared == nil) {
-			t.Errorf("declared=%v came back as %v through :model_sync", declared, synced[0].InputModalities)
+			t.Errorf("%s: broadcast %s, want %s", tc.name, broadcast, want)
 		}
 	}
 }
@@ -144,17 +139,23 @@ func TestInputModalitiesAbsentAndEmptyStayApart(t *testing.T) {
 // TestInputModalitiesRoundTripValues keeps the declared words intact through the
 // file and the wire, order included.
 func TestInputModalitiesRoundTripValues(t *testing.T) {
+	const content = `name: m
+protocol_type: openai
+base_url: https://x
+api_key: k
+model_name: m
+input_modalities: ["text", "image", "video"]
+`
 	want := []string{"text", "image", "video"}
-	m := modelConfig{Name: "m", ProtocolType: "openai", BaseURL: "https://x", APIKey: "k", ModelName: "m", InputModalities: want}
 
-	back, msgs := parseModelConfig(formatModelList([]modelConfig{m}), "model.conf")
+	back, msgs := parseModelConfig(content, "model.conf")
 	if len(msgs) > 0 {
 		t.Fatalf("unexpected messages: %v", msgs)
 	}
 	if !slices.Equal(back[0].InputModalities, want) {
-		t.Errorf("file round trip: got %v, want %v", back[0].InputModalities, want)
+		t.Errorf("file parse: got %v, want %v", back[0].InputModalities, want)
 	}
 	if !slices.Equal(toModelInfos(back)[0].InputModalities, want) {
-		t.Errorf("wire round trip: got %v, want %v", toModelInfos(back)[0].InputModalities, want)
+		t.Errorf("wire: got %v, want %v", toModelInfos(back)[0].InputModalities, want)
 	}
 }

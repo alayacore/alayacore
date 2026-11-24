@@ -59,7 +59,7 @@ be read as a complete one.
 The first `SM` frame of a session is the version frame:
 
 ```
-SM{"type":"version","data":{"message_version":18,"core_version":"<build-time version>"}}
+SM{"type":"version","data":{"message_version":19,"core_version":"<build-time version>"}}
 ```
 
 `message_version` identifies the wire format described in this document — the
@@ -524,7 +524,7 @@ after one the transcript an adapter has accumulated is not the session's
    ```
    These are informational — the session continues with whatever valid models
    are available. The adapter should display them so the user can fix their
-   `model.conf`. After `:model_load` / `:model_sync`, the same validation
+   `model.conf`. After `:model_load`, the same validation
    errors arrive differently: the command **fails** with a CO frame
    (`code:"CONFIG_MODEL_INVALID"`, errors joined in `message`) — the user must
    see them to fix the config.
@@ -668,7 +668,6 @@ CE.txt                         CE                  (the tag alone) — input end
 CI-cancel.txt                  CI{"command_id":"1","name":"cancel"}
 CI-cancel-keep-steering.txt    CI{"command_id":"4","name":"cancel","args":"keep_steering"}
 CI-save.txt                    CI{"command_id":"2","name":"save","args":"/tmp/x.alaya"}
-CI-model-sync.txt              CI{"command_id":"3","name":"model_sync","args":"[{id,name,protocol_type,base_url,api_key,model_name,context_limit,max_tokens},...]"}
 ```
 
 **stdout — content (history id in `"id"`, time on authoritative frames):**
@@ -744,7 +743,7 @@ The system-message samples follow with their schema.
 Complete wire values:
 
 ```
-SM-message-version.txt         {"type":"version","data":{"message_version":18,"core_version":"(set at build time)"}}
+SM-message-version.txt         {"type":"version","data":{"message_version":19,"core_version":"(set at build time)"}}
 SM-model.txt                   {"type":"model","data":{"active_id":4,"active_name":"DeepSeek / DeepSeek-V4 Flash","context_limit":1000000}}
 SM-model-list.txt              {"type":"model_list","data":{"models":[{"id":0,"name":"Anthropic / Claude Haiku 4","protocol_type":"anthropic","base_url":"https://api.anthropic.com","api_key":"sk-ant-...","model_name":"claude-haiku-4-20260515","context_limit":200000,"max_tokens":0,"serial_tool_calls":false,"input_modalities":null},{"id":4,"name":"DeepSeek / DeepSeek-V4 Flash","protocol_type":"openai","base_url":"https://api.deepseek.com/v1","api_key":"sk-ds-...","model_name":"deepseek-v4-flash","context_limit":1000000,"max_tokens":0,"serial_tool_calls":false,"input_modalities":null}]}}
 SM-theme.txt                   {"type":"theme","data":{"name":"theme-dark"}}
@@ -899,21 +898,25 @@ never arrives falls back to printing the manual
 piped stdin, and terseio always — the server is declined instead, so MCP
 init settles. rawio delegates the whole flow to the controlling process.
 
-### Model Sync
+### Editing the model list
 
-An adapter that lets the user edit the model list — none of the built-in ones
-does; they read `model.conf` and reload with `:model_load` — posts the edited
-list back through `model_sync` when its editor session ends:
+There is no command that carries a model list: `model.conf` is the one place
+models are written, and the wire is read-only for it (v19 removed `model_sync`,
+which used to post an edited array back — see
+[the wire version history](../docs/architecture.md#wire-version-history)).
+
+An adapter that lets the user edit models therefore writes `model.conf` itself
+and sends `model_load` when its editor session ends:
 
 | Trigger | Adapter Action | CI Response |
 |---------|----------------|-------------|
-| The adapter's model-config editor session ends | Read the edited file, send its content as a JSON array | `{"command_id":"...","name":"model_sync","args":"[{...}, {...}]"}` |
+| The adapter's model-config editor session ends | Save the edited `model.conf`, then send the command | `{"command_id":"...","name":"model_load"}` |
 
-The `input` is a serialized array of model config objects (same format as the
-`models` field in `SM-model-list.txt`). The agent replaces all models with
-the provided list, re-resolves the active model, and reinitializes the
-provider. If any model block is rejected or persistence fails, the command
-fails with `code:"CONFIG_MODEL_INVALID"` and the errors in `message`.
+The agent re-reads the file, validates every block, re-resolves the active model
+and reinitializes the provider. Blocks that fail validation are skipped and the
+command fails with `code:"CONFIG_MODEL_INVALID"` and the errors in `message`; the
+valid ones are applied regardless, so the user can fix the file and send
+`model_load` again.
 
 ### Full command list
 
@@ -932,7 +935,6 @@ client speaking this protocol sends the full name.
 | `tool_confirm` / `tool_decline` | `<call_id>` | `{"call_id":...}` |
 | `model_set` | `<id>` | `{"active_id":...,"active_name":...}` |
 | `model_load` | — | `{"models":[...]}` |
-| `model_sync` | `<json>` | `{"models":[...]}` |
 | `reasoning_level_set` | `<0\|1\|2>` | `{"level":...}` |
 | `video_config` | `<fps> <res>` | `{"fps":...,"res":...}` — sets the session **default** for videos ingested after it; each video keeps the settings it was ingested with |
 | `mcp_confirm` | `<server> <code> <redirect_uri> [iss]` | `{"server":...}` |

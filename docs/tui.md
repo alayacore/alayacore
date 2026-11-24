@@ -1201,12 +1201,18 @@ Press `F1` or type `:help` to open a help overlay listing all keybindings and co
 | `Esc` | Close help overlay |
 | `j` | Move selection down |
 | `k` | Move selection up |
-| `Enter` | Copy selected command to input (commands only) |
+| `Enter` | Copy selected command to input (commands only; with the filter focused, the first match) |
+| `Ctrl+C` | Clear the filter (filter focused) |
 
-The help overlay is organized into three sections:
+The help overlay is organized into four sections:
 
-- **Commands** — colon commands available in the input field
+- **Commands** — colon commands available in the input field. Generated from the
+  command vocabulary (`commands.Defs`), the same table the session dispatches
+  from, so the list cannot disagree with what a command is called or what
+  arguments it takes; the two adapter-local controls (`:help`, `:suspend`) are
+  appended because they never reach the session
 - **Global Shortcuts** — keybindings that work from any context
+- **Prompt** — the keys the prompt box itself owns (line break, delete word, clear)
 - **Display Mode** — navigation and editing keys for the display area
 
 The help overlay uses the same size, position, and overlay pattern as the model selector and theme selector.

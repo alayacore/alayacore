@@ -166,7 +166,6 @@ var Defs = []Definition{
 	def(CommandNameThemeSet, "Switch theme by name", Rest("name")),
 	def(CommandNameModelSet, "Switch model by ID", Token("id")),
 	def(CommandNameModelLoad, "Reload model config"),
-	def(CommandNameModelSync, "Apply edited model config", Rest("content")),
 	def(CommandNameSave, "Save session", Optional(Rest("filename"))),
 	def(CommandNameFork, "Fork session up to a history ID", Token("history_id"), Rest("filename")),
 	def(CommandNameVideoConfig, "Set video FPS and resolution", Token("fps"), Token("res")).

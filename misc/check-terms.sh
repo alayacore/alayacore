@@ -81,7 +81,8 @@ report "$hits" 'the folded state is folded/unfolded'
 # ── 4. A usage line is rendered, not spelled ───────────────────────────────
 # commands.Defs owns a command's argument shape and commands.UsageLine renders
 # it; a handler that wrote its own "usage: :name <args>" drifted from the table
-# (:tool_confirm <id> against a <call_id>, :model_sync <json> against <content>).
+# (:tool_confirm <id> against a <call_id>; the v19-removed :model_sync spelled
+# <json> where the vocabulary said <content>).
 # The renderer itself lives in internal/commands and is the one allowed spelling.
 hits=$(grep -rn '"usage: :' --include=*.go internal/agent internal/adapters 2>/dev/null)
 report "$hits" 'a usage line spelled in a handler — render it with commands.UsageLine'

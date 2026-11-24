@@ -48,7 +48,7 @@ is one of two shapes.
   silently ignored.
 - **A free-text tail** — the rest of the line, spaces included, with
   surrounding whitespace trimmed: `:save [filename]`, `:fork <history_id>
-  <filename>`, `:theme_set <name>`, `:model_sync <content>`.
+  <filename>`, `:theme_set <name>`.
 
 A command whose usage line is empty (`:quit`, `:summarize`, `:continue`,
 `:model_load`, `:mcp_skip`) takes no arguments at all; a stray word is
@@ -176,7 +176,6 @@ These commands are rejected with an error if a task is currently running:
 |---------|--------|-----------|
 | `:model_set <id>` | Switch to a model by numeric ID | `{"active_id","active_name"}` |
 | `:model_load` | Reload model configs from the config file | `{"models"}` |
-| `:model_sync <content>` | Apply edited model config (sent by UI, not user-facing) | `{"models"}` |
 
 A model switch replaces the provider and the agent, and the step in flight is
 running inside the agent being replaced — there is no coherent way to apply one
@@ -184,6 +183,12 @@ mid-task, so the command is refused instead of half-applied. The settings that
 only change what the *next* request asks for (`:reasoning_level_set`,
 `:video_config`) had the same shape but not the same problem, and are immediate
 (see above).
+
+`:model_load` is the only way models get into a running session: `model.conf` is
+the one place they are written, and nothing on the wire replaces the list. An
+adapter whose editor writes that file needs no command beyond this one — which is
+what `:model_sync` used to be for, before it was removed (see
+[architecture.md](architecture.md#wire-version-history)).
 
 ## Task Commands
 

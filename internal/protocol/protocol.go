@@ -157,17 +157,16 @@ type ModelInfo struct {
 	Reasoning2     json.RawMessage `json:"reasoning_2,omitempty"`
 	ReasoningField string          `json:"reasoning_field,omitempty"`
 
-	// SerialToolCalls mirrors modelConfig's json tag exactly. No omitempty:
-	// model_list is what a consumer edits and posts back through :model_sync,
-	// and what comes back replaces model.conf, so the broadcast has to state the
-	// mode instead of leaving a default to infer.
+	// SerialToolCalls mirrors modelConfig's json tag exactly. No omitempty: a
+	// consumer that renders the model list has nothing to infer a default from,
+	// so the broadcast states the mode rather than leaving it out.
 	SerialToolCalls bool `json:"serial_tool_calls"`
 
 	// InputModalities mirrors modelConfig's json tag for the same reason, and
 	// the omission would be worse here: with omitempty an empty list ("this
-	// model takes no media") would leave as an absent field and come back as
-	// "not declared", which widens the model to every modality the protocol can
-	// carry. Null (nil) is the undeclared value and travels as such.
+	// model takes no media") would leave as an absent field and read as the
+	// other setting — two values on the wire, one spelling. Null (nil) is the
+	// undeclared value and travels as such.
 	InputModalities []string `json:"input_modalities"`
 }
 

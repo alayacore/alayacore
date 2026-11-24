@@ -154,136 +154,6 @@ func TestReasoningConfigsMapAllEmpty(t *testing.T) {
 	}
 }
 
-func TestFormatModelList_Empty(t *testing.T) {
-	out := formatModelList(nil)
-	if out != "" {
-		t.Errorf("expected empty string, got %q", out)
-	}
-	out = formatModelList([]modelConfig{})
-	if out != "" {
-		t.Errorf("expected empty string, got %q", out)
-	}
-}
-
-func TestFormatModelList_Single(t *testing.T) {
-	models := []modelConfig{
-		{
-			Name:         "test-model",
-			ProtocolType: "anthropic",
-			BaseURL:      "http://localhost:11434",
-			APIKey:       "nokey",
-			ModelName:    "test",
-			ContextLimit: 64000,
-		},
-	}
-	out := formatModelList(models)
-
-	if !strings.Contains(out, `name: "test-model"`) {
-		t.Errorf("missing name, got: %s", out)
-	}
-	if !strings.Contains(out, `protocol_type: "anthropic"`) {
-		t.Errorf("missing protocol_type, got: %s", out)
-	}
-	if !strings.Contains(out, `base_url: "http://localhost:11434"`) {
-		t.Errorf("missing base_url, got: %s", out)
-	}
-	if !strings.Contains(out, `api_key: "nokey"`) {
-		t.Errorf("missing api_key, got: %s", out)
-	}
-	if !strings.Contains(out, `model_name: "test"`) {
-		t.Errorf("missing model_name, got: %s", out)
-	}
-	if !strings.Contains(out, `context_limit: 64000`) {
-		t.Errorf("missing context_limit, got: %s", out)
-	}
-
-	// No trailing blank lines
-	if strings.HasSuffix(out, "\n\n") {
-		t.Errorf("trailing blank line: %q", out)
-	}
-	// Ends with single newline
-	if !strings.HasSuffix(out, "\n") {
-		t.Errorf("missing trailing newline: %q", out)
-	}
-	// No leading/trailing --- for single model
-	if strings.HasPrefix(out, "---") {
-		t.Errorf("unexpected leading ---: %q", out)
-	}
-	if strings.Count(out, "---") > 0 {
-		t.Errorf("unexpected --- for single model: %q", out)
-	}
-}
-
-func TestFormatModelList_Multiple(t *testing.T) {
-	models := []modelConfig{
-		{Name: "model-a", ProtocolType: "openai", BaseURL: "http://a", APIKey: "k", ModelName: "m-a"},
-		{Name: "model-b", ProtocolType: "anthropic", BaseURL: "http://b", APIKey: "k", ModelName: "m-b"},
-	}
-	out := formatModelList(models)
-
-	if !strings.Contains(out, `name: "model-a"`) {
-		t.Errorf("missing model-a, got: %s", out)
-	}
-	if !strings.Contains(out, `name: "model-b"`) {
-		t.Errorf("missing model-b, got: %s", out)
-	}
-
-	// Separated by ---
-	if !strings.Contains(out, "\n---\n") {
-		t.Errorf("missing --- separator, got: %s", out)
-	}
-
-	// No blank line before --- (FormatKeyValue trailing \n was trimmed)
-	lines := strings.Split(out, "\n")
-	for i, line := range lines {
-		if line == "---" && i > 0 {
-			if lines[i-1] == "" {
-				t.Errorf("blank line before --- at line %d", i)
-			}
-		}
-	}
-}
-
-func TestFormatModelList_OmitsZeroValues(t *testing.T) {
-	models := []modelConfig{
-		{
-			Name:         "test",
-			ProtocolType: "openai",
-			BaseURL:      "http://localhost",
-			APIKey:       "k",
-			ModelName:    "m",
-			// ContextLimit and MaxTokens are 0 (zero) → omitempty → not written
-		},
-	}
-	out := formatModelList(models)
-
-	if strings.Contains(out, "context_limit:") {
-		t.Errorf("expected context_limit to be omitted (0 value), got: %s", out)
-	}
-	if strings.Contains(out, "max_tokens:") {
-		t.Errorf("expected max_tokens to be omitted (0 value), got: %s", out)
-	}
-}
-
-func TestFormatModelList_OmitsID(t *testing.T) {
-	models := []modelConfig{
-		{
-			ID:           42,
-			Name:         "test",
-			ProtocolType: "openai",
-			BaseURL:      "http://localhost",
-			APIKey:       "k",
-			ModelName:    "m",
-		},
-	}
-	out := formatModelList(models)
-
-	// ID has config:"-" tag, should never appear in output
-	if strings.Contains(out, "id:") {
-		t.Errorf("expected id to be omitted (config:\"-\"), got: %s", out)
-	}
-}
-
 func TestParseModelList_Empty(t *testing.T) {
 	models, errs := parseModelList("", "model.conf")
 	if len(models) != 0 {
@@ -518,111 +388,20 @@ api_key: "k"
 	}
 }
 
-func TestParseModelList_RoundTrip(t *testing.T) {
-	original := []modelConfig{
-		{Name: "m1", ProtocolType: "openai", BaseURL: "http://a", APIKey: "k1", ModelName: "m1", ContextLimit: 1000},
-		{Name: "m2", ProtocolType: "anthropic", BaseURL: "http://b", APIKey: "k2", ModelName: "m2", MaxTokens: 500},
-	}
-	formatted := formatModelList(original)
-	parsed, errs := parseModelList(formatted, "model.conf")
-	if len(errs) != 0 {
-		t.Errorf("expected 0 errors, got %d: %v", len(errs), errs)
-	}
-	if len(parsed) != len(original) {
-		t.Fatalf("expected %d models, got %d", len(original), len(parsed))
-	}
-	for i := range original {
-		if parsed[i].Name != original[i].Name {
-			t.Errorf("model[%d].Name = %q, want %q", i, parsed[i].Name, original[i].Name)
-		}
-		if parsed[i].ProtocolType != original[i].ProtocolType {
-			t.Errorf("model[%d].ProtocolType = %q, want %q", i, parsed[i].ProtocolType, original[i].ProtocolType)
-		}
-		if parsed[i].BaseURL != original[i].BaseURL {
-			t.Errorf("model[%d].BaseURL = %q, want %q", i, parsed[i].BaseURL, original[i].BaseURL)
-		}
-		if parsed[i].ModelName != original[i].ModelName {
-			t.Errorf("model[%d].ModelName = %q, want %q", i, parsed[i].ModelName, original[i].ModelName)
-		}
-		if parsed[i].ContextLimit != original[i].ContextLimit {
-			t.Errorf("model[%d].ContextLimit = %d, want %d", i, parsed[i].ContextLimit, original[i].ContextLimit)
-		}
-		if parsed[i].MaxTokens != original[i].MaxTokens {
-			t.Errorf("model[%d].MaxTokens = %d, want %d", i, parsed[i].MaxTokens, original[i].MaxTokens)
-		}
-	}
-}
-
-func TestFormatThenParse_WithID(t *testing.T) {
-	// ID (config:"-") should never survive a format+parse cycle.
-	original := []modelConfig{
-		{ID: 99, Name: "test", ProtocolType: "openai", BaseURL: "http://a", APIKey: "k", ModelName: "m"},
-	}
-	formatted := formatModelList(original)
-	parsed, _ := parseModelList(formatted, "model.conf")
-	if len(parsed) != 1 {
-		t.Fatalf("expected 1 model, got %d", len(parsed))
-	}
-	if parsed[0].ID != 0 {
-		t.Errorf("ID should be reset to 0 after format+parse, got %d", parsed[0].ID)
-	}
-}
-
-// TestFormatThenParse_Reasoning verifies the raw JSON for each
-// reasoning level survives a format→parse cycle byte-for-byte.
-// Drift here would corrupt the per-level wire configuration silently.
-func TestFormatThenParse_Reasoning(t *testing.T) {
-	original := []modelConfig{
-		{
-			Name:         "test",
-			ProtocolType: "anthropic",
-			BaseURL:      "http://x",
-			APIKey:       "k",
-			ModelName:    "m",
-			Reasoning0:   json.RawMessage(`{"thinking":{"type":"disabled"}}`),
-			Reasoning1:   json.RawMessage(`{"thinking":{"type":"enabled"},"output_config":{"effort":"high"}}`),
-			Reasoning2:   json.RawMessage(`{"thinking":{"type":"enabled"},"output_config":{"effort":"max"}}`),
-		},
-	}
-	formatted := formatModelList(original)
-	parsed, errs := parseModelList(formatted, "model.conf")
-	if len(errs) != 0 {
-		t.Errorf("expected 0 errors, got %d: %v", len(errs), errs)
-	}
-	if len(parsed) != 1 {
-		t.Fatalf("expected 1 model, got %d", len(parsed))
-	}
-	for _, c := range []struct {
-		name string
-		got  json.RawMessage
-		want json.RawMessage
-	}{
-		{"Reasoning0", parsed[0].Reasoning0, original[0].Reasoning0},
-		{"Reasoning1", parsed[0].Reasoning1, original[0].Reasoning1},
-		{"Reasoning2", parsed[0].Reasoning2, original[0].Reasoning2},
-	} {
-		if !bytes.Equal(c.got, c.want) {
-			t.Errorf("%s round-trip drift: got %s, want %s", c.name, c.got, c.want)
-		}
-	}
-}
-
-// TestFormatThenParse_ReasoningField verifies the response-key setting
-// survives a format→parse cycle. Unlike reasoning_N it is a plain string, so
-// both the config tag (model.conf) and the json tag (:model_sync) have to be
+// TestParseModelList_ReasoningField verifies the response-key setting from the
+// file that carries it. Unlike reasoning_N it is a plain string, so the config
+// tag (model.conf) and the json tag (the model_list broadcast) both have to be
 // right or the setting is silently lost and the provider falls back to the
 // default key.
-func TestFormatThenParse_ReasoningField(t *testing.T) {
-	original := []modelConfig{{
-		Name:           "vllm",
-		ProtocolType:   "openai",
-		BaseURL:        "http://127.0.0.1:8000/v1",
-		APIKey:         "k",
-		ModelName:      "deepseek-r1",
-		ReasoningField: "reasoning",
-	}}
-
-	parsed, errs := parseModelList(formatModelList(original), "model.conf")
+func TestParseModelList_ReasoningField(t *testing.T) {
+	content := `name: "vllm"
+protocol_type: "openai"
+base_url: "http://127.0.0.1:8000/v1"
+api_key: "k"
+model_name: "deepseek-r1"
+reasoning_field: "reasoning"
+`
+	parsed, errs := parseModelList(content, "model.conf")
 	if len(errs) != 0 {
 		t.Fatalf("expected 0 errors, got %d: %v", len(errs), errs)
 	}
@@ -630,15 +409,17 @@ func TestFormatThenParse_ReasoningField(t *testing.T) {
 		t.Fatalf("expected 1 model, got %d", len(parsed))
 	}
 	if parsed[0].ReasoningField != "reasoning" {
-		t.Errorf("model.conf round-trip lost reasoning_field: got %q", parsed[0].ReasoningField)
+		t.Errorf("reasoning_field = %q, want %q", parsed[0].ReasoningField, "reasoning")
 	}
 
-	synced, err := json.Marshal(parsed[0])
+	// The broadcast has to carry it: a consumer has no default to fall back on,
+	// so a dropped key would be indistinguishable from "not configured".
+	synced, err := json.Marshal(toModelInfos(parsed))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(synced), `"reasoning_field":"reasoning"`) {
-		t.Errorf(":model_sync payload missing reasoning_field: %s", synced)
+		t.Errorf("broadcast payload missing reasoning_field: %s", synced)
 	}
 
 	// Omitted in model.conf → empty, which the provider maps to the default.
@@ -671,10 +452,11 @@ func TestSerialToolCallsAbsentMeansTheHistoricalBehavior(t *testing.T) {
 	}
 }
 
-// model_list is what a protocol consumer edits and hands back through
-// :model_sync, and what comes back replaces model.conf. So the broadcast states
-// the mode explicitly even where the config file wrote no line at all: a
-// consumer is never asked to reconstruct a default it was not given.
+// model_list is what a protocol consumer renders, and it is the only thing such
+// a consumer sees: nothing on the wire can replace the model list, so the
+// broadcast has to state the mode explicitly even where the config file wrote no
+// line at all. A consumer is never asked to reconstruct a default it was not
+// given.
 //
 // The "configured true" case is what catches a forgotten toModelInfos line: the
 // wire would carry bool's zero value while the domain carried true.
@@ -735,7 +517,7 @@ func TestModelInfoAndModelConfigJSONKeysMatch(t *testing.T) {
 	}
 	for name := range wire {
 		if _, ok := domain[name]; !ok {
-			t.Errorf("protocol.ModelInfo serializes %q but modelConfig does not — it is dropped by :model_sync", name)
+			t.Errorf("protocol.ModelInfo serializes %q but modelConfig does not — toModelInfos would have to invent it", name)
 		}
 	}
 	if len(domain) == 0 || len(wire) == 0 {
@@ -761,135 +543,58 @@ func jsonFieldNames(typ reflect.Type) map[string]bool {
 	return names
 }
 
-// The loop a protocol consumer actually performs, end to end: a model is
-// broadcast as model_list (the wire type), posted straight back through
-// :model_sync, persisted to model.conf, and read again as if alayacore had just
-// started. A user's `serial_tool_calls: true` has to survive all four legs.
+// What a consumer of model_list actually reads, end to end: the option is
+// written in model.conf, loaded into the domain, and broadcast. Three different
+// functions, so a value dropped anywhere shows up here rather than as a model
+// list that quietly disagrees with the file the user edited.
 //
-// Each leg runs a different function, so a value dropped anywhere shows up here
-// rather than as a config that quietly changed under the user.
-func TestModelListBroadcastSurvivesTheAdapterRoundTrip(t *testing.T) {
-	configPath := filepath.Join(t.TempDir(), "model.conf")
+// The broadcast states the mode even when the file wrote no line at all, because
+// a consumer rendering this list has no way to reconstruct a default it was
+// never given. (The come-back half of this loop — a consumer posting the edited
+// array back — went away with :model_sync; model.conf is now the only writer.)
+func TestModelListBroadcastCarriesTheModeFromTheFile(t *testing.T) {
+	const head = "name: \"m\"\nprotocol_type: openai\nbase_url: http://x\napi_key: k\nmodel_name: model-a\n"
 
 	for _, tc := range []struct {
 		name string
-		set  bool
+		line string // the model.conf line, "" meaning "write no line"
+		want bool
 	}{
-		{"parallel", false},
-		{"serial", true},
+		{"parallel", "", false},
+		{"serial", "serial_tool_calls: true\n", true},
 	} {
-		stored := modelConfig{
-			Name: "m", ProtocolType: "openai", BaseURL: "http://x",
-			APIKey: "k", ModelName: "model-a", SerialToolCalls: tc.set,
+		configPath := filepath.Join(t.TempDir(), "model.conf")
+		if err := os.WriteFile(configPath, []byte(head+tc.line), 0600); err != nil {
+			t.Fatalf("%s: write config: %v", tc.name, err)
 		}
 
-		// Leg 1→2: what the session broadcasts.
-		broadcast, err := json.Marshal(protocol.ModelListMsg{Models: toModelInfos([]modelConfig{stored})})
+		mm := newModelManager(configPath)
+		if err := mm.loadFromFile(configPath); err != nil {
+			t.Fatalf("%s: load: %v", tc.name, err)
+		}
+		models := mm.getModels()
+		if len(models) != 1 {
+			t.Fatalf("%s: %d models, want 1", tc.name, len(models))
+		}
+
+		// What the session broadcasts: the wire type, not the domain one.
+		broadcast, err := json.Marshal(protocol.ModelListMsg{Models: toModelInfos(models)})
 		if err != nil {
 			t.Fatal(err)
 		}
 		var envelope struct {
-			Models json.RawMessage `json:"models"`
+			Models []map[string]any `json:"models"`
 		}
 		if err := json.Unmarshal(broadcast, &envelope); err != nil {
-			t.Fatal(err)
+			t.Fatalf("%s: decode broadcast: %v", tc.name, err)
 		}
-		if !strings.Contains(string(envelope.Models), `"serial_tool_calls":`) {
-			t.Errorf("%s: broadcast omitted the mode (%s) — a consumer cannot edit what it cannot see", tc.name, envelope.Models)
+		got, ok := envelope.Models[0]["serial_tool_calls"]
+		if !ok {
+			t.Fatalf("%s: broadcast omitted the mode (%s) — a consumer cannot read what it cannot see",
+				tc.name, broadcast)
 		}
-
-		// Leg 3: the consumer sends that same array back through :model_sync,
-		// which validates, replaces, and persists.
-		mm := newModelManager(configPath)
-		if msgs := mm.syncFromContent(string(envelope.Models)); len(msgs) != 0 {
-			t.Fatalf("%s: :model_sync rejected its own broadcast: %v", tc.name, msgs)
-		}
-		synced := mm.getModels()
-		if len(synced) != 1 {
-			t.Fatalf("%s: %d models after sync, want 1", tc.name, len(synced))
-		}
-		if got := synced[0].SerialToolCalls; got != tc.set {
-			t.Errorf("%s: mode changed through the adapter loop: got %v, want %v", tc.name, got, tc.set)
-		}
-
-		// Leg 4→5: the file it just wrote, read back the way a fresh start would.
-		onDisk, err := os.ReadFile(configPath)
-		if err != nil {
-			t.Fatalf("%s: read persisted config: %v", tc.name, err)
-		}
-		relaunched, errs := parseModelList(string(onDisk), configPath)
-		if len(errs) != 0 {
-			t.Fatalf("%s: reparse errors %v (file: %q)", tc.name, errs, onDisk)
-		}
-		if len(relaunched) != 1 {
-			t.Fatalf("%s: %d models on disk, want 1 (file %q)", tc.name, len(relaunched), onDisk)
-		}
-		if got := relaunched[0].SerialToolCalls; got != tc.set {
-			t.Errorf("%s: the persisted file says %v, want %v (file: %q)", tc.name, got, tc.set, onDisk)
-		}
-	}
-}
-
-// What the file says and what the program means, in both directions.
-//
-// The asymmetry this pins is deliberate: model.conf omits the option when it is
-// at its default, so an unchanged file stays free of a line saying nothing,
-// while every JSON the domain takes part in states it, so no consumer has to
-// infer a default. The two are only safe together if a false arriving from
-// either path means the same thing — which is what the negative spelling buys,
-// and what a *bool would have complicated for no benefit.
-func TestFormatThenParse_SerialToolCalls(t *testing.T) {
-	for _, tc := range []struct {
-		name     string
-		set      bool
-		wantLine string // the model.conf line, "" meaning "write no line"
-	}{
-		{"default", false, ""},
-		{"serial", true, "serial_tool_calls: true"},
-	} {
-		original := []modelConfig{{
-			Name: "m", ProtocolType: "openai", BaseURL: "http://x",
-			APIKey: "k", ModelName: "model-a", SerialToolCalls: tc.set,
-		}}
-
-		text := formatModelList(original)
-		if tc.wantLine == "" {
-			if strings.Contains(text, "serial_tool_calls") {
-				t.Errorf("%s: the default wrote a line anyway: %q", tc.name, text)
-			}
-		} else if !strings.Contains(text, tc.wantLine) {
-			t.Errorf("%s: model.conf text = %q, want it to contain %q", tc.name, text, tc.wantLine)
-		}
-
-		parsed, errs := parseModelList(text, "model.conf")
-		if len(errs) != 0 {
-			t.Fatalf("%s: parse errors: %v (text %q)", tc.name, errs, text)
-		}
-		if parsed[0].SerialToolCalls != tc.set {
-			t.Errorf("%s: mode lost through the file round trip: got %v, want %v (text %q)",
-				tc.name, parsed[0].SerialToolCalls, tc.set, text)
-		}
-
-		// Writing what was just read must reproduce the file exactly, or a save
-		// would drift the config on every round trip.
-		if again := formatModelList(parsed); again != text {
-			t.Errorf("%s: second write differs:\n first: %q\nsecond: %q", tc.name, text, again)
-		}
-
-		// JSON, both ways: the mode is always stated, never left to inference.
-		synced, err := json.Marshal(parsed)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Contains(synced, []byte(`"serial_tool_calls":`)) {
-			t.Errorf("%s: JSON dropped the mode, forcing a consumer to infer it: %s", tc.name, synced)
-		}
-		var back []modelConfig
-		if err := json.Unmarshal(synced, &back); err != nil {
-			t.Fatalf("%s: unmarshal sync payload: %v", tc.name, err)
-		}
-		if back[0].SerialToolCalls != tc.set {
-			t.Errorf("%s: mode changed through :model_sync: got %v, want %v", tc.name, back[0].SerialToolCalls, tc.set)
+		if asBool, isBool := got.(bool); !isBool || asBool != tc.want {
+			t.Errorf("%s: serial_tool_calls = %#v, want %v (broadcast %s)", tc.name, got, tc.want, broadcast)
 		}
 	}
 }

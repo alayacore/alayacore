@@ -10,9 +10,10 @@ import (
 )
 
 // modelConfig represents a model configuration.
-// config tags drive model.conf parsing; json tags cover the :model_sync
-// JSON exchange. The model_list system message uses protocol.ModelInfo
-// (see toModelInfos) so adapters never need this type.
+// config tags drive model.conf parsing; json tags mirror protocol.ModelInfo so
+// the domain and the model_list broadcast cannot drift apart (see toModelInfos
+// and TestModelInfoAndModelConfigJSONKeysMatch). adapters decode the broadcast
+// type, never this one.
 type modelConfig struct {
 	ID           int             `json:"id" config:"-"`                                        // Runtime ID (generated, not persisted)
 	Name         string          `json:"name" config:"name"`                                   // Display name
@@ -48,9 +49,9 @@ type modelConfig struct {
 	// providers/openai.go, nowhere else.
 	//
 	// The json tag has no omitempty so every JSON the domain takes part in —
-	// :model_sync, the :model_list response — states the mode rather than
-	// leaving a consumer to infer it; the config tag does, so an unchanged
-	// model.conf stays free of a line saying nothing.
+	// the :model_list broadcast — states the mode rather than leaving a
+	// consumer to infer it; the config tag does, so an unchanged model.conf
+	// stays free of a line saying nothing.
 	SerialToolCalls bool `json:"serial_tool_calls" config:"serial_tool_calls,omitempty"`
 
 	// InputModalities declares the complete set of input modalities this model
@@ -65,9 +66,10 @@ type modelConfig struct {
 	// ["text"] describe the same model.
 	//
 	// No omitempty on the json tag, on purpose: an empty list would otherwise
-	// travel as an absent field and come back as "not declared" through
-	// :model_sync — a silent widening to every modality the protocol carries.
-	// The config tag does have it, because nil is what an undeclared model is.
+	// travel as an absent field, so a consumer reading the :model_list
+	// broadcast would see "not declared" where the model said "takes no media"
+	// — two different settings spelled the same way on the wire. The config tag
+	// does have it, because nil is what an undeclared model is.
 	// Both tags sit here so the field order matches protocol.ModelInfo's, which
 	// TestToModelInfosWireCompatible compares byte for byte.
 	InputModalities []string `json:"input_modalities" config:"input_modalities,omitempty"`
@@ -98,19 +100,6 @@ func (m *modelConfig) ReasoningConfigs() map[int]json.RawMessage {
 		return nil
 	}
 	return configs
-}
-
-// formatModelList formats a slice of modelConfig to key-value block format.
-// Blocks are separated by "---". The output has no trailing blank line.
-func formatModelList(models []modelConfig) string {
-	if len(models) == 0 {
-		return ""
-	}
-	blocks := make([]string, 0, len(models))
-	for _, m := range models {
-		blocks = append(blocks, strings.TrimSuffix(config.FormatKeyValue(m), "\n"))
-	}
-	return strings.Join(blocks, "\n---\n") + "\n"
 }
 
 // toModelInfos converts domain models to the wire format used in system

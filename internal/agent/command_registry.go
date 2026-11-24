@@ -108,8 +108,6 @@ var commandDefs = []command{
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleModelSet(args) }},
 	{commands.CommandNameModelLoad, cmdIdle,
 		func(s *Session, _ context.Context, _ string) (any, error) { return s.handleModelLoad() }},
-	{commands.CommandNameModelSync, cmdIdle,
-		func(s *Session, _ context.Context, args string) (any, error) { return s.handleModelSync(args) }},
 	{commands.CommandNameReasoningLevelSet, cmdImmediate,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleReasoningLevelSet(args) }},
 	{commands.CommandNameThemeSet, cmdImmediate,
