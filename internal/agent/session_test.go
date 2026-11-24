@@ -513,10 +513,12 @@ func TestTextAndReasoningInSameMessage(t *testing.T) {
 }
 
 func TestModelSetWhileTaskRunning(t *testing.T) {
-	// Create a mock output to capture messages
+	// A model switch is no longer refused while a task runs: the replacement is
+	// published as a snapshot, the running step keeps the agent it started with,
+	// and the session says which is which. The test drives the real entry point
+	// (handleInputMsg) so the dispatch path is the one that ships.
 	output := &MockOutput{}
 
-	// Create a session with a model manager
 	sessionCtx, sessionCancel := context.WithCancel(context.Background())
 	defer sessionCancel()
 	session := &Session{
@@ -544,32 +546,47 @@ func TestModelSetWhileTaskRunning(t *testing.T) {
 	}
 	session.modelService.manager.models = append(session.modelService.manager.models, testModel)
 
-	// Test 1: model_set should work when no task is running.
-	// Dispatch through handleInputMsg (the real entry point) so the
-	// cmdIdle policy is enforced.
+	joined := func() string { return strings.Join(output.Messages, "") }
+
+	// Test 1: model_set works when no task is running — and stays quiet, because
+	// there is no in-flight task to warn about.
 	output.Messages = nil
 	session.handleInputMsg(inputMsg{cmd: "model_set", args: "1", isCmd: true, commandID: "t1"})
 
 	if hasCOError(output.Messages) {
 		t.Error("model_set should succeed when no task is running, but got error")
 	}
+	if strings.Contains(joined(), "model switched to") {
+		t.Errorf("an idle switch warned about a task in flight: %s", joined())
+	}
 
-	// Test 2: model_set should fail when task is running.
+	// Test 2: it works while a task is running, and says that this task keeps the
+	// model it started on. That notify is the whole point of allowing it: the
+	// answer arriving is from the old model, and nothing else would say so.
 	output.Messages = nil
 	session.activeTask = &taskHandle{}
 	session.handleInputMsg(inputMsg{cmd: "model_set", args: "1", isCmd: true, commandID: "t2"})
 
-	if !hasCOError(output.Messages) {
-		t.Error("model_set should fail when task is running, but no error was found")
+	if hasCOError(output.Messages) {
+		t.Errorf("model_set must be accepted while a task runs, but was refused: %s", joined())
+	}
+	if !strings.Contains(joined(), "model switched to") {
+		t.Errorf("a switch mid-task must say the task keeps the previous model: %s", joined())
+	}
+	if !strings.Contains(joined(), "the task in flight finishes on the previous model") {
+		t.Errorf("the notify does not say what happens next: %s", joined())
 	}
 
-	// Test 3: model_set should work again after task completes.
+	// Test 3: after the task lands it works again, and is quiet again.
 	output.Messages = nil
 	session.activeTask = nil
 	session.handleInputMsg(inputMsg{cmd: "model_set", args: "1", isCmd: true, commandID: "t3"})
 
 	if hasCOError(output.Messages) {
 		t.Error("model_set should succeed after task completes, but got error")
+	}
+	if strings.Contains(joined(), "model switched to") {
+		t.Errorf("an idle switch warned about a task in flight: %s", joined())
 	}
 }
 

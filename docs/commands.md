@@ -95,13 +95,17 @@ whole string for the detail.
 | `INTERNAL_NOT_INITIALIZED` | a subsystem that should exist does not |
 | `INTERNAL_UNCLASSIFIED` | a handler returned a bare error: a bug, since every refusal above names its cause |
 
-Commands fall into three categories:
+## Commands
 
-- **Immediate commands** (`cmdImmediate`) — run synchronously in the main loop, always allowed
-- **Idle commands** (`cmdIdle`) — run synchronously, but rejected while a task is in progress
-- **Task commands** — require LLM calls, run in a separate goroutine
+Everything in this table is dispatched from the session's main loop and answered
+before the next input is read, so any of it can be used at any time — including
+while a task is running. The model switch is the one worth saying out loud: it
+takes effect on the next prompt, and the session reports that in a `notify` (see
+below).
 
-## Immediate Commands
+`:continue` and `:summarize` are not here. They need an LLM call, so they start a
+task of their own and answer asynchronously; they are under
+[Task Commands](#task-commands).
 
 | Command | Action | CO result |
 |---------|--------|-----------|
@@ -117,6 +121,8 @@ Commands fall into three categories:
 | `:mcp_confirm <server> <code> <redirect_uri> [iss]` | Confirm MCP OAuth authorization with auth code | `{"server"}` |
 | `:mcp_decline <server>` | Decline MCP OAuth authorization | `{"server"}` |
 | `:mcp_skip` | Skip MCP server initialization | `null` |
+| `:model_set <id>` | Switch to a model by numeric ID | `{"active_id","active_name"}` |
+| `:model_load` | Reload model configs from the config file | `{"models"}` |
 
 `:reasoning_level_set` and `:video_config` say what happens *from now on*, so
 they are accepted while a task runs and take effect at its next request — the
@@ -130,6 +136,20 @@ authorization is only ever pending before the session is ready, which is also
 what stops a task from starting, so there is nothing to serialize them against —
 and what they answer when nothing is pending (`STATE_NOT_IN_PROGRESS`) is more
 informative than "busy".
+
+A model switch is a different case from both: it replaces the agent the task is
+executing inside. It is accepted mid-task because a task takes one snapshot of
+its model when it starts — the agent and the context window that belongs to it —
+and runs to its end on that snapshot, so the switch cannot reach the step in
+flight. It takes effect on the next prompt, and the session says so with a
+`notify` frame at the moment it happens, because the alternative is an answer
+arriving from a model the user believes they already left. That is why the
+vocabulary has no "wait for the task to finish" refusal: the only command that
+ever needed one now explains itself instead.
+
+`:model_load` is the only way models get into a running session: `model.conf` is
+the one place they are written, and nothing on the wire replaces the list (see
+[architecture.md](architecture.md#wire-version-history)).
 
 One timing detail follows from "ingested": a video that arrives with a prompt
 queued as steering is ingested when the task splices it in at its next step
@@ -167,28 +187,6 @@ prompt typed afterwards is part of the next prompt either way. Any other word is
 The TUI reaches both forms from `Ctrl+G`: the confirmation dialog offers the
 keeping form only when the session reports queued steering, so the common case
 (nothing queued) asks nothing extra.
-
-## Idle Commands
-
-These commands are rejected with an error if a task is currently running:
-
-| Command | Action | CO result |
-|---------|--------|-----------|
-| `:model_set <id>` | Switch to a model by numeric ID | `{"active_id","active_name"}` |
-| `:model_load` | Reload model configs from the config file | `{"models"}` |
-
-A model switch replaces the provider and the agent, and the step in flight is
-running inside the agent being replaced — there is no coherent way to apply one
-mid-task, so the command is refused instead of half-applied. The settings that
-only change what the *next* request asks for (`:reasoning_level_set`,
-`:video_config`) had the same shape but not the same problem, and are immediate
-(see above).
-
-`:model_load` is the only way models get into a running session: `model.conf` is
-the one place they are written, and nothing on the wire replaces the list. An
-adapter whose editor writes that file needs no command beyond this one — which is
-what `:model_sync` used to be for, before it was removed (see
-[architecture.md](architecture.md#wire-version-history)).
 
 ## Task Commands
 

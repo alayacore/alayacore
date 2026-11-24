@@ -37,8 +37,8 @@ context_limit: 1000000
 	ms := newModelService(newModelManager(configPath), newRuntimeManager(""))
 	ms.ResolveActiveModel()
 
-	if ms.contextLimit != 1000000 {
-		t.Errorf("contextLimit = %d, want 1000000 (must be synced from resolved model before SwitchModel)", ms.contextLimit)
+	if got := ms.contextLimit.Load(); got != 1000000 {
+		t.Errorf("contextLimit = %d, want 1000000 (must be synced from resolved model before SwitchModel)", got)
 	}
 	if model := ms.ActiveModel(); model == nil {
 		t.Fatal("expected a resolved active model")
@@ -70,11 +70,11 @@ context_limit: 1000000
 		ModelConfigPath: configPath,
 	}, nil)
 
-	if s.modelService.contextLimit != 1000000 {
-		t.Errorf("modelService.contextLimit = %d, want 1000000", s.modelService.contextLimit)
+	if got := s.modelService.contextLimit.Load(); got != 1000000 {
+		t.Errorf("modelService.contextLimit = %d, want 1000000", got)
 	}
-	if s.ContextLimit != 1000000 {
-		t.Errorf("s.ContextLimit = %d, want 1000000 (auto-summarize threshold source)", s.ContextLimit)
+	if got := s.contextLimit(); got != 1000000 {
+		t.Errorf("contextLimit() = %d, want 1000000 (auto-summarize threshold source)", got)
 	}
 
 	joined := strings.Join(output.Messages, "")

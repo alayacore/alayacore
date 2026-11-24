@@ -1,6 +1,6 @@
 package agent
 
-// The command table: what the session can dispatch, and when a command may run.
+// The command table: what the session can dispatch.
 //
 // One table, because a session has one. A registry object wrapping it bought
 // nothing — there is no second set of commands to keep apart, and no state to
@@ -14,35 +14,14 @@ import (
 	"github.com/alayacore/alayacore/internal/commands"
 )
 
-// cmdPolicy specifies how and when a command is dispatched.
-type cmdPolicy int
-
-const (
-	// cmdImmediate runs synchronously in the run() goroutine.
-	// Safe to execute even while a task is streaming (e.g. :cancel, :save).
-	cmdImmediate cmdPolicy = iota
-
-	// cmdIdle runs synchronously but is rejected when a task is
-	// in progress.
-	//
-	// What earns this policy, and nothing less: the task goroutine reads what the
-	// command writes, and a running step cannot stop reading it. A model switch
-	// replaces the provider/agent pair the step is executing inside, so there is
-	// nothing coherent to hand that step mid-flight.
-	//
-	// Leaving this policy therefore means first making the field race-free. Two
-	// settings commands did exactly that — :reasoning_level_set and
-	// :video_config now write an atomic and a swapped snapshot (see
-	// modelService) — because their effect, "from the next request on", is
-	// well defined while a task runs.
-	//
-	// A command that merely has nothing to act on while a task runs does not
-	// belong here either: it answers about its own precondition instead of
-	// claiming the session is busy. The MCP authorization answers
-	// (:mcp_confirm, :mcp_decline) were that case and are immediate.
-	cmdIdle
-)
-
+// Every command here runs synchronously in the run() goroutine. There is no
+// second policy: the one thing a command could not do mid-task — replace the
+// model — is now safe, because the replacement is published as a snapshot and a
+// task holds the one it started with (see modelRuntime and session_model.go).
+// A user switching models while an answer streams is not a race the dispatcher
+// has to refuse; it is a switch that lands on the next prompt, and the session
+// says so in a notify.
+//
 // commandHandler is a function that handles a command.
 // args is everything after the first space (empty string if no args).
 // It returns the structured result (serialized into CO result on success)
@@ -67,12 +46,11 @@ func (e cmdErr) Error() string { return e.Message }
 // a copy is how the help list drifted from the registry.
 type command struct {
 	Name    string
-	Policy  cmdPolicy
 	Handler commandHandler
 }
 
-// lookupCommand returns the handler and policy for name, or false when the name
-// is not a command this session dispatches.
+// lookupCommand returns the handler for name, or false when the name is not a
+// command this session dispatches.
 func lookupCommand(name string) (command, bool) {
 	cmd, ok := commandHandlers[name]
 	return cmd, ok
@@ -88,13 +66,13 @@ var commandHandlers = func() map[string]command {
 	return handlers
 }()
 
-// commandDefs is every command the session dispatches, with its handler and
-// policy. The names come from the shared commands package — the same table an
+// commandDefs is every command the session dispatches, with its handler. The
+// names come from the shared commands package — the same table an
 // adapter renders — so neither side can introduce a spelling of its own.
 var commandDefs = []command{
-	{commands.CommandNameQuit, cmdImmediate,
+	{commands.CommandNameQuit,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleQuit(args) }},
-	{commands.CommandNameCancel, cmdImmediate,
+	{commands.CommandNameCancel,
 		func(s *Session, _ context.Context, args string) (any, error) {
 			fate, err := cancelSteeringFate(args)
 			if err != nil {
@@ -102,28 +80,28 @@ var commandDefs = []command{
 			}
 			return s.cancelTask(fate)
 		}},
-	{commands.CommandNameSave, cmdImmediate,
+	{commands.CommandNameSave,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.saveSession(args) }},
-	{commands.CommandNameModelSet, cmdIdle,
+	{commands.CommandNameModelSet,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleModelSet(args) }},
-	{commands.CommandNameModelLoad, cmdIdle,
+	{commands.CommandNameModelLoad,
 		func(s *Session, _ context.Context, _ string) (any, error) { return s.handleModelLoad() }},
-	{commands.CommandNameReasoningLevelSet, cmdImmediate,
+	{commands.CommandNameReasoningLevelSet,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleReasoningLevelSet(args) }},
-	{commands.CommandNameThemeSet, cmdImmediate,
+	{commands.CommandNameThemeSet,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleThemeSet(args) }},
-	{commands.CommandNameToolConfirm, cmdImmediate,
+	{commands.CommandNameToolConfirm,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleToolConfirmCmd(args) }},
-	{commands.CommandNameToolDecline, cmdImmediate,
+	{commands.CommandNameToolDecline,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleToolDeclineCmd(args) }},
-	{commands.CommandNameFork, cmdImmediate,
+	{commands.CommandNameFork,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleFork(args) }},
-	{commands.CommandNameVideoConfig, cmdImmediate,
+	{commands.CommandNameVideoConfig,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleVideoConfig(args) }},
-	{commands.CommandNameMCPConfirm, cmdImmediate,
+	{commands.CommandNameMCPConfirm,
 		func(s *Session, ctx context.Context, args string) (any, error) { return s.handleMCPConfirm(ctx, args) }},
-	{commands.CommandNameMCPDecline, cmdImmediate,
+	{commands.CommandNameMCPDecline,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleMCPDecline(args) }},
-	{commands.CommandNameMCPSkip, cmdImmediate,
+	{commands.CommandNameMCPSkip,
 		func(s *Session, _ context.Context, _ string) (any, error) { return s.handleMCPSkip() }},
 }

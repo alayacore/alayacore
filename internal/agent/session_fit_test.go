@@ -61,7 +61,7 @@ func TestRunTaskNormalFitsOversizeImagesBeforeStoring(t *testing.T) {
 	})
 	session := &Session{
 		sessionConfig: sessionConfig{
-			modelService:  &modelService{agent: agent},
+			modelService:  testModelService(agent, nil, 0),
 			SessionConfig: SessionConfig{NoDelta: true, Output: io.Discard},
 		},
 		sharedState: sharedState{
@@ -128,7 +128,7 @@ func TestRunTaskNormalKeepsUndecodableImageAndEchoesItAsMedia(t *testing.T) {
 	var out bytes.Buffer
 	session := &Session{
 		sessionConfig: sessionConfig{
-			modelService:  &modelService{agent: agent},
+			modelService:  testModelService(agent, nil, 0),
 			SessionConfig: SessionConfig{NoDelta: true, Output: &out},
 		},
 		sharedState: sharedState{

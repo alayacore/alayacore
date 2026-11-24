@@ -95,7 +95,7 @@ func TestCompleteFramesCarryContentOnlyWhenDeltasAreOff(t *testing.T) {
 			agent := llm.NewAgent(llm.AgentConfig{Provider: textAndReasoningProvider{}, MaxSteps: 1})
 			s := &Session{
 				sessionConfig: sessionConfig{
-					modelService:  &modelService{agent: agent},
+					modelService:  testModelService(agent, nil, 0),
 					SessionConfig: SessionConfig{Output: out, NoDelta: tc.noDelta, MaxSteps: 1},
 				},
 				sharedState: sharedState{histCounter: 10, outputBroken: atomic.Bool{}},

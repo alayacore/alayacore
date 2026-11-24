@@ -56,7 +56,7 @@ func newDeferredPromptSession(t *testing.T, output *syncOutput, provider llm.Pro
 	t.Helper()
 
 	ms := newModelService(newModelManager(""), newRuntimeManager(""))
-	ms.agent = llm.NewAgent(llm.AgentConfig{Provider: provider, MaxSteps: 5})
+	ms.publishRuntime(llm.NewAgent(llm.AgentConfig{Provider: provider, MaxSteps: 5}))
 	ms.provider = provider
 
 	sessionCtx, cancel := context.WithCancel(context.Background())

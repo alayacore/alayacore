@@ -175,7 +175,7 @@ func steeringSession(t *testing.T, output *syncOutput, provider llm.Provider, to
 
 	s := &Session{
 		sessionConfig: sessionConfig{
-			modelService: &modelService{agent: agent, provider: provider},
+			modelService: testModelService(agent, provider, 0),
 			SessionConfig: SessionConfig{
 				Output:   output,
 				NoDelta:  true,
@@ -799,7 +799,8 @@ func TestSteeringSplicedAtCompactionBoundaryThenStepFails(t *testing.T) {
 	s := steeringSession(t, output, provider, []llm.Tool{tool}, []llm.ContentPart{
 		&llm.TextPart{Text: "earlier", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser}},
 	})
-	s.AutoSummarize, s.ContextLimit = 100, 10
+	s.AutoSummarize = 100
+	setTestContextLimit(s, 10)
 
 	go s.runTaskNormal(context.Background(), []llm.ContentPart{&llm.TextPart{Text: "do it"}})
 	<-toolStarted
@@ -884,7 +885,8 @@ func TestSteeringDroppedWhenTaskStartSummarizeFails(t *testing.T) {
 	s := steeringSession(t, output, provider, nil, []llm.ContentPart{
 		&llm.TextPart{Text: "history", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser}},
 	})
-	s.AutoSummarize, s.ContextLimit, s.ContextTokens = 100, 10, 10
+	s.AutoSummarize, s.ContextTokens = 100, 10
+	setTestContextLimit(s, 10)
 
 	go s.runTaskNormal(context.Background(), []llm.ContentPart{&llm.TextPart{Text: "do it"}})
 
@@ -1041,7 +1043,7 @@ func TestSteeringEndToEndThroughInputPipe(t *testing.T) {
 
 	s := &Session{
 		sessionConfig: sessionConfig{
-			modelService: &modelService{agent: agent, provider: provider},
+			modelService: testModelService(agent, provider, 0),
 			SessionConfig: SessionConfig{
 				Input:       r,
 				Output:      output,
@@ -1511,7 +1513,8 @@ func TestSteeringSplicedAfterCompactionInSameBoundary(t *testing.T) {
 	// usage (15 tokens) pushes the task-local count over the threshold, and the
 	// compaction fires at step 2's boundary — the same boundary the steering is
 	// waiting for.
-	s.AutoSummarize, s.ContextLimit = 100, 10
+	s.AutoSummarize = 100
+	setTestContextLimit(s, 10)
 
 	go s.runTaskNormal(context.Background(), []llm.ContentPart{&llm.TextPart{Text: "do it"}})
 	<-toolStarted

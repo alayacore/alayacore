@@ -177,11 +177,10 @@ func TestAutoSummarizeMidTaskFailureEndsTheTurn(t *testing.T) {
 	})
 	session := &Session{
 		sessionConfig: sessionConfig{
-			modelService:  &modelService{agent: agent},
+			modelService:  testModelService(agent, nil, 100), // 65% = 65
 			SessionConfig: SessionConfig{NoDelta: true, AutoSummarize: 65, Output: io.Discard, SessionFile: filepath.Join(t.TempDir(), "s.alaya")},
 		},
 		sharedState: sharedState{
-			ContextLimit:  100,
 			ContextTokens: 10,
 		},
 		runState: runState{
@@ -218,10 +217,10 @@ func TestAutoSummarizeTaskStartFailureSkipsTheTurn(t *testing.T) {
 	agent := llm.NewAgent(llm.AgentConfig{Provider: provider, MaxSteps: 10})
 	session := &Session{
 		sessionConfig: sessionConfig{
-			modelService:  &modelService{agent: agent},
+			modelService:  testModelService(agent, nil, 100),
 			SessionConfig: SessionConfig{NoDelta: true, AutoSummarize: 65, Output: io.Discard},
 		},
-		sharedState: sharedState{ContextLimit: 100, ContextTokens: 70}, // over the 65% threshold
+		sharedState: sharedState{ContextTokens: 70}, // over the 65% threshold
 		runState:    runState{taskEventCh: make(chan taskEvent, 20)},
 	}
 	session.Contents = []llm.ContentPart{
@@ -252,10 +251,10 @@ func TestAutoSummarizeTaskStartFailureSkipsContinue(t *testing.T) {
 	agent := llm.NewAgent(llm.AgentConfig{Provider: provider, MaxSteps: 10})
 	session := &Session{
 		sessionConfig: sessionConfig{
-			modelService:  &modelService{agent: agent},
+			modelService:  testModelService(agent, nil, 100),
 			SessionConfig: SessionConfig{NoDelta: true, AutoSummarize: 65, Output: io.Discard},
 		},
-		sharedState: sharedState{ContextLimit: 100, ContextTokens: 70}, // over the 65% threshold
+		sharedState: sharedState{ContextTokens: 70}, // over the 65% threshold
 		runState: runState{
 			taskEventCh:  make(chan taskEvent, 20),
 			taskResultCh: make(chan []llm.ContentPart, 1),
@@ -314,10 +313,10 @@ func TestAutoSummarizeRunsAtContinueStart(t *testing.T) {
 	agent := llm.NewAgent(llm.AgentConfig{Provider: provider, MaxSteps: 10})
 	session := &Session{
 		sessionConfig: sessionConfig{
-			modelService:  &modelService{agent: agent},
+			modelService:  testModelService(agent, nil, 100),
 			SessionConfig: SessionConfig{NoDelta: true, AutoSummarize: 65, Output: io.Discard},
 		},
-		sharedState: sharedState{ContextLimit: 100, ContextTokens: 70}, // over the 65% threshold
+		sharedState: sharedState{ContextTokens: 70}, // over the 65% threshold
 		runState:    runState{taskEventCh: make(chan taskEvent, 20), taskResultCh: make(chan []llm.ContentPart, 1)},
 	}
 	session.Contents = []llm.ContentPart{
@@ -365,7 +364,7 @@ func TestAutoSummarizeCompactsMidTask(t *testing.T) {
 	})
 	session := &Session{
 		sessionConfig: sessionConfig{
-			modelService: &modelService{agent: agent},
+			modelService: testModelService(agent, nil, 100),
 			// SessionFile set so the pre-summarize backup actually runs: it is
 			// the path that reads the context size from the task goroutine, and
 			// this test is where a race on that read would surface (-race).
@@ -375,8 +374,7 @@ func TestAutoSummarizeCompactsMidTask(t *testing.T) {
 				SessionFile: filepath.Join(t.TempDir(), "s.alaya")},
 		},
 		sharedState: sharedState{
-			ContextLimit:  100, // 65% = 65
-			ContextTokens: 10,  // below threshold: the task-start check stays quiet
+			ContextTokens: 10, // below threshold: the task-start check stays quiet
 		},
 		runState: runState{
 			taskEventCh: make(chan taskEvent, 20),
@@ -442,11 +440,12 @@ func TestAutoSummarizeMidTaskSkippedBelowThreshold(t *testing.T) {
 	})
 	session := &Session{
 		sessionConfig: sessionConfig{
-			modelService:  &modelService{agent: agent},
+			// 65% of 10000 = 6500, far above the mock's ~105 tokens: the task
+			// runs to its end without a compaction.
+			modelService:  testModelService(agent, nil, 10000),
 			SessionConfig: SessionConfig{NoDelta: true, AutoSummarize: 65},
 		},
 		sharedState: sharedState{
-			ContextLimit:  10000, // 65% = 6500, far above the mock's ~105
 			ContextTokens: 10,
 		},
 		runState: runState{

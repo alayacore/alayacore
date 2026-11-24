@@ -42,7 +42,7 @@ completed so far. The authoritative final message state is still returned
 separately via `taskResultCh` on task completion, which replaces `Contents`
 wholesale (per-step deltas are self-corrected by that final replacement).
 
-- **Overwrite (`Store`), not accumulate (`Add`).** Each API call's `InputTokens` already represents the *entire conversation history* sent in that request. Accumulating would double-count. `OutputTokens` is included because the model's `ContextLimit` is a combined input+output window, and the latest output is part of the conversation that will be sent in the next request.
+- **Overwrite (`Store`), not accumulate (`Add`).** Each API call's `InputTokens` already represents the *entire conversation history* sent in that request. Accumulating would double-count. `OutputTokens` is included because the model's `context_limit` is a combined input+output window, and the latest output is part of the conversation that will be sent in the next request.
 - **Guard against zero reports.** Some OpenAI-compatible providers (e.g. GLM-5.1) may omit the `usage` field from SSE chunks entirely — they simply never send a chunk containing `"usage": {"prompt_tokens": N, ...}`. Go's `json.Unmarshal` leaves absent fields at their zero values, so the parsed `Usage` struct arrives as all zeros. Without the guard, this would reset `ContextTokens` to 0, breaking auto-summarization and the status bar display. The `if newContext > 0` check preserves the last known good value.
 - **Only the last step's value matters.** For multi-step tool call loops, each step re-sends the full history (plus new messages). The last step has the most complete count.
 - **Cross-goroutine communication.** The task goroutine sends usage via typed events on `taskEventCh`; the `run()` goroutine owns the authoritative `ContextTokens` and updates it via `handleTaskEvent`. The task-start check (`shouldAutoSummarize`) reads that copy, which is safe because the `taskEventCh` drain in `handleTaskDone` commits all pending events before the next task starts. The **mid-task** check does not read it: `processPrompt` keeps a task-local copy fed by the same step callbacks and never touches `s.ContextTokens`, which `run()` is concurrently rewriting. Both feed the one predicate `exceedsAutoSummarizeThreshold`.
@@ -94,7 +94,7 @@ Note that `ContextTokens` now includes `OutputTokens`, so the values differ from
 ## Auto-Summarization (`--auto-summarize`)
 
 When `--auto-summarize=N` is set (N = 1–100), the conversation is summarized
-whenever the measured context reaches N% of `ContextLimit`. The check runs at
+whenever the measured context reaches N% of `context_limit`. The check runs at
 two points, both *before* a request is sent:
 
 1. **At the start of a task** — `runTaskNormal` (a prompt) and `runTaskContinue`
@@ -261,5 +261,5 @@ Both are sent by the same goroutine sequentially, and the FIFO channel guarantee
 - `runTaskSummarize()` / `summarizeContents()` (in `session_task.go`) — sends the summarize prompt via `processPrompt`, then replaces conversation history with the summary and resets `ContextTokens` to the summary's output token count via `setContextTokensEvent`
 - `setContextTokensEvent` — a dedicated task event that sets `ContextTokens` to the correct value after summarization, overriding the stale value from the preceding `stepFinishEvent`
 - `groupForAnthropic` — groups a tool result and a following user text into one user message (Anthropic wire rule; keeps a post-tool-result summarize prompt from splitting into two user messages)
-- `SwitchModel()` / `ensureAgentInitialized()` — sync `ContextLimit` from the active model's config (`modelService.contextLimit`) on a model switch and on lazy agent init
+- `SwitchModel()` / `ensureAgentInitialized()` — publish the active model's `context_limit` together with the agent it belongs to, as one `modelRuntime` snapshot, on a model switch and on the lazy first build. A task takes that snapshot once at its start, so the threshold it compares against is the window of the model it is running on, even if a switch lands mid-task.
 - `sessionMeta.ContextTokens` — persisted to session file frontmatter so the status bar shows the correct context usage immediately after loading a session

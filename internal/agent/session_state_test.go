@@ -290,7 +290,7 @@ func TestSessionState_ReadyBroadcastExactlyOnce(t *testing.T) {
 func TestBeginTask_GatedOnSessionState(t *testing.T) {
 	output := &MockOutput{}
 	ms := newModelService(newModelManager(""), newRuntimeManager(""))
-	ms.agent = &llm.Agent{}
+	ms.publishRuntime(&llm.Agent{})
 	ms.provider = &mockProviderStepFail{}
 
 	sessionCtx, cancel := context.WithCancel(context.Background())

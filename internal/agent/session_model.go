@@ -20,9 +20,15 @@ func (s *Session) SwitchModel(modelConfig *modelConfig) error {
 	if err := s.modelService.SwitchModel(modelConfig, s.BaseTools, s.SystemPrompt, s.ExtraSystemPrompt, s.MaxSteps); err != nil {
 		return err
 	}
-	// Sync back context limit from the service.
-	s.ContextLimit = s.modelService.contextLimit
 	s.sendSystemInfo(systemInfoModel)
+	// A task in flight is running on the agent that was just replaced, and it
+	// will keep running on it: processPrompt captured its snapshot when the task
+	// started, so the agent loop cannot change model under itself. Say so where
+	// it happens — the alternative is a user watching an answer arrive from a
+	// model they believe they already left.
+	if s.activeTask != nil {
+		s.writeNotifyf("model switched to %q; the task in flight finishes on the previous model, and the next prompt uses this one", modelConfig.Name)
+	}
 	return nil
 }
 
@@ -52,10 +58,9 @@ func (s *Session) ensureAgentInitialized() error {
 	if err := s.modelService.EnsureInitialized(s.BaseTools, s.SystemPrompt, s.ExtraSystemPrompt, s.MaxSteps); err != nil {
 		return err
 	}
-	// Lazy init switches the modelService's context limit but does not go
-	// through Session.SwitchModel, so sync the session field here to keep
-	// auto-summarize thresholds consistent with the initialized model.
-	s.ContextLimit = s.modelService.contextLimit
+	// The lazy build publishes its snapshot with the limit it was built from
+	// (EnsureInitialized -> SwitchModel -> publishRuntime), so there is nothing
+	// to sync here: the task reads that one value.
 	return nil
 }
 
@@ -80,4 +85,25 @@ func (s *Session) SetVideoConfig(fps int, resolution int) {
 // ============================================================================
 
 // Agent returns the current LLM agent. Called from the task goroutine.
-func (s *Session) Agent() *llm.Agent { return s.modelService.agent }
+func (s *Session) Agent() *llm.Agent {
+	if rt := s.modelService.currentRuntime(); rt != nil {
+		return rt.agent
+	}
+	return nil
+}
+
+// currentRuntime is the single snapshot a task works from: the agent it runs on
+// and the context limit that agent's window sets. Taking it once, at the top of
+// a task, is what keeps a switch from landing in the middle of one.
+func (s *Session) currentRuntime() *modelRuntime { return s.modelService.currentRuntime() }
+
+// contextLimit is the window the request being built is measured against. The
+// published snapshot answers for an initialized session; before the first agent
+// exists, the resolved model's number does (that is the value the status bar
+// shows from startup).
+func (s *Session) contextLimit() int64 {
+	if rt := s.currentRuntime(); rt != nil {
+		return rt.contextLimit
+	}
+	return s.modelService.contextLimit.Load()
+}

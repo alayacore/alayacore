@@ -134,7 +134,6 @@ type runState struct {
 // design guarantees that prevent concurrent access.
 type sharedState struct {
 	ContextTokens int64 // last-known context token count; updated by run() from task events
-	ContextLimit  int64 // maximum context window size (input+output); set from model config
 
 	histCounter uint64
 
@@ -406,11 +405,10 @@ func buildSession(cfg SessionConfig, data *sessionData) *Session {
 	}
 	s.modelService.SetReasoningLevel(reasoningLevel)
 
-	// The context limit is applied up front so the status bar can show
-	// "tokens/limit (pct%)" before any API call.
-	if model := s.modelService.ActiveModel(); model != nil {
-		s.ContextLimit = s.modelService.contextLimit
-	}
+	// The context limit is resolved up front (ResolveActiveModel) so the status
+	// bar can show "tokens/limit (pct%)" before any API call. It is read from
+	// there — one field on the service, not a copy on the session that the task
+	// goroutine would have to keep in step.
 
 	// Set up MCP service (manages init lifecycle).
 	s.mcpService = newMCPService(cfg.MCPInit)

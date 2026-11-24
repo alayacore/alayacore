@@ -390,7 +390,7 @@ model_name: ""
 func TestStartTaskCommand_Success(t *testing.T) {
 	output := &MockOutput{}
 	ms := newModelService(newModelManager(""), newRuntimeManager(""))
-	ms.agent = &llm.Agent{}
+	ms.publishRuntime(&llm.Agent{})
 	ms.provider = &mockProviderStepFail{}
 
 	sessionCtx, cancel := context.WithCancel(context.Background())
@@ -435,7 +435,7 @@ func TestStartTaskCommand_Success(t *testing.T) {
 func TestStartTaskCommand_BroadcastsTaskStart(t *testing.T) {
 	output := &MockOutput{}
 	ms := newModelService(newModelManager(""), newRuntimeManager(""))
-	ms.agent = &llm.Agent{}
+	ms.publishRuntime(&llm.Agent{})
 	ms.provider = &mockProviderStepFail{}
 
 	sessionCtx, cancel := context.WithCancel(context.Background())

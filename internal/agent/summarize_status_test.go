@@ -181,7 +181,7 @@ func startStatusTestSession(t *testing.T, provider llm.Provider, cfg SessionConf
 	agent := llm.NewAgent(llm.AgentConfig{Provider: provider, MaxSteps: cfg.MaxSteps})
 	s := &Session{
 		sessionConfig: sessionConfig{
-			modelService:  &modelService{agent: agent, provider: provider, contextLimit: contextLimit},
+			modelService:  testModelService(agent, provider, contextLimit),
 			SessionConfig: cfg,
 		},
 		runState: runState{
@@ -194,7 +194,6 @@ func startStatusTestSession(t *testing.T, provider llm.Provider, cfg SessionConf
 			sessionCtx:    ctx,
 			sessionCancel: cancel,
 			confirmChs:    make(map[string]chan bool),
-			ContextLimit:  contextLimit,
 			ContextTokens: contextTokens,
 		},
 		runDoneCh: make(chan struct{}),

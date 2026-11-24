@@ -178,7 +178,7 @@ func TestCancelTask_EndToEnd(t *testing.T) {
 
 	s := &Session{
 		sessionConfig: sessionConfig{
-			modelService: &modelService{agent: agent, provider: provider},
+			modelService: testModelService(agent, provider, 0),
 			SessionConfig: SessionConfig{
 				Input:   r,
 				Output:  output,
@@ -303,7 +303,7 @@ func TestCancelTask_KeepsExecutedToolResult(t *testing.T) {
 
 	s := &Session{
 		sessionConfig: sessionConfig{
-			modelService: &modelService{agent: agent, provider: provider},
+			modelService: testModelService(agent, provider, 0),
 			SessionConfig: SessionConfig{
 				Input:   r,
 				Output:  output,

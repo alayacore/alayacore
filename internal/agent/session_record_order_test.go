@@ -43,7 +43,7 @@ func TestSessionFileKeepsProtocolOrderForCutStep(t *testing.T) {
 	agent := llm.NewAgent(llm.AgentConfig{Provider: invertedArrivalProvider{}, MaxSteps: 1})
 	session := &Session{
 		sessionConfig: sessionConfig{
-			modelService:  &modelService{agent: agent},
+			modelService:  testModelService(agent, nil, 0),
 			SessionConfig: SessionConfig{NoDelta: true},
 		},
 		sharedState: sharedState{histCounter: 10},

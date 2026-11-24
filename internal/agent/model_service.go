@@ -4,12 +4,12 @@ package agent
 //
 // Extracted from session_model.go. Owns modelManager, runtimeManager, and
 // the agent/provider pair. The run() goroutine owns the service; the task
-// goroutine reads agent/provider via accessors. Model switching is cmdIdle
-// (rejected during a task), so no mutex is needed for agent/provider access.
+// goroutine reaches the model through the published runtime snapshot, which is
+// the one piece of state a switch and a running step share — see the field's
+// comment in the struct.
 //
 // The two settings a running task must see change (:reasoning_level_set,
-// :video_config) are the exception and are held atomically — see the fields
-// below.
+// :video_config) are held atomically too — see the fields below.
 
 import (
 	"fmt"
@@ -25,6 +25,13 @@ import (
 // modelService manages model configuration, provider/agent lifecycle, and
 // reasoning/video settings. All owned by the run() goroutine, except the two
 // atomically held settings a running task reads.
+// modelRuntime is one model's live runtime as a task sees it: the agent that
+// runs the steps and the context window they are measured against.
+type modelRuntime struct {
+	agent        *llm.Agent
+	contextLimit int64
+}
+
 type modelService struct {
 	manager    *modelManager
 	runtimeMgr *runtimeManager
@@ -34,17 +41,26 @@ type modelService struct {
 	overrideModel    string // --model CLI flag override
 	initError        error  // set if --model refers to a non-existent model
 
-	// Provider/Agent — written by run(), read by task goroutine.
-	// Safe because model switching (cmdIdle) is rejected during tasks.
+	// Provider — written and read by run() only. The task goroutine never
+	// touches it; it reaches the model through the published runtime below.
 	provider llm.Provider
-	agent    *llm.Agent
+
+	// runtime is what a task reads, and it is one snapshot rather than two
+	// fields because a step belongs to one model: the agent it runs on and the
+	// context limit its auto-summarize threshold is measured against have to be
+	// the same model's. Two independent atomics would let a switch land between
+	// the loads and pair a new, smaller window with the old threshold — which
+	// does not merely mis-report, it withholds a summarize the new model needs.
+	//
+	// Written by run() (and by the lazy first build, which runs before a task
+	// exists), read once per task by processPrompt.
+	runtime atomic.Pointer[modelRuntime]
 
 	// Settings read by a task while it runs.
 	//
-	// These two are the exception to the "run() owns it" rule above, because the
-	// commands that write them (:reasoning_level_set, :video_config) are
-	// immediate: a task already running may keep going, and the change has to be
-	// visible to it from its next request on.
+	// These two are written while a task may be running
+	// (:reasoning_level_set, :video_config): the task keeps going, and the change
+	// has to be visible to it from its next request on.
 	//
 	// reasoningLevel is shared, not copied: this is the one instance, and the
 	// provider reads through a pointer to it (llm.ReasoningLevel) instead of
@@ -55,8 +71,13 @@ type modelService struct {
 	reasoningLevel llm.ReasoningLevel
 	videoDefault   atomic.Pointer[videoConfig]
 
-	// Context limit derived from active model config
-	contextLimit int64
+	// Context limit derived from active model config. Atomic because two
+	// directions reach it: run() stores it while resolving and publishing, and
+	// Session.contextLimit() reads it as the fallback for a session whose runtime
+	// is not published yet — a function the task goroutine also calls, and from
+	// which it cannot tell that the fallback is unreachable once a task is
+	// running. The number a task actually measures against is the snapshot's.
+	contextLimit atomic.Int64
 
 	// Configuration passed through from Session for agent creation
 	debugDir string
@@ -155,7 +176,7 @@ func (ms *modelService) ResolveActiveModel() {
 	ms.setActiveFromSessionMeta()
 	ms.setActiveFromCliFlag()
 	if model := ms.ActiveModel(); model != nil {
-		ms.contextLimit = int64(model.ContextLimit)
+		ms.contextLimit.Store(int64(model.ContextLimit))
 	}
 }
 
@@ -199,13 +220,25 @@ func (ms *modelService) SwitchModel(modelConfig *modelConfig, baseTools []llm.To
 		return err
 	}
 	ms.provider = provider
-	ms.agent = agent
-	ms.contextLimit = int64(modelConfig.ContextLimit)
+	ms.contextLimit.Store(int64(modelConfig.ContextLimit))
 	if ms.provider != nil {
 		ms.provider.SetReasoningConfigs(modelConfig.ReasoningConfigs())
 	}
+	ms.publishRuntime(agent)
 	return nil
 }
+
+// publishRuntime swaps in an agent together with the context limit in force for
+// it. The limit lives on the service — run() stores it while resolving the
+// active model, before any agent exists — so this is where the two are married
+// into the one value a task reads.
+func (ms *modelService) publishRuntime(agent *llm.Agent) {
+	ms.runtime.Store(&modelRuntime{agent: agent, contextLimit: ms.contextLimit.Load()})
+}
+
+// currentRuntime is the snapshot a task works from, or nil before the first
+// agent is built.
+func (ms *modelService) currentRuntime() *modelRuntime { return ms.runtime.Load() }
 
 // EnsureInitialized checks if agent/provider are ready; if not, creates them
 // from the active model. Safe to call multiple times — fast path when ready.
@@ -215,7 +248,7 @@ func (ms *modelService) SwitchModel(modelConfig *modelConfig, baseTools []llm.To
 // would put the command plane's INTERNAL_UNCLASSIFIED fallback on the wire, which tells
 // a caller nothing about whether to fix its config or its provider.
 func (ms *modelService) EnsureInitialized(baseTools []llm.Tool, systemPrompt, extraSystemPrompt string, maxSteps int) error {
-	if ms.agent != nil && ms.provider != nil {
+	if rt := ms.currentRuntime(); rt != nil && rt.agent != nil && ms.provider != nil {
 		return nil
 	}
 	if ms.manager == nil {
@@ -233,7 +266,7 @@ func (ms *modelService) EnsureInitialized(baseTools []llm.Tool, systemPrompt, ex
 
 // Reset clears the agent and provider (e.g. after MCP init updates tools/prompt).
 func (ms *modelService) Reset() {
-	ms.agent = nil
+	ms.publishRuntime(nil)
 	ms.provider = nil
 }
 
@@ -243,7 +276,7 @@ func (ms *modelService) Reset() {
 
 // SetReasoningLevel sets the reasoning level.
 //
-// Callable from run() while a task runs (:reasoning_level_set is immediate). One
+// Callable from run() while a task runs (:reasoning_level_set can arrive mid-task). One
 // store reaches every reader: the provider, which builds the next request body
 // from this object, and the session's own consumers — the SM reasoning frame and
 // the session file's metadata, the latter written from the task goroutine. A
@@ -277,7 +310,7 @@ type videoConfig struct {
 // rewrites a message already in the record. Nothing is pushed to the provider —
 // there is no global video state to push (see llm.VideoPart).
 //
-// Callable from run() while a task runs (:video_config is immediate): the task
+// Callable from run() while a task runs (:video_config can arrive mid-task): the task
 // goroutine stamps the video it is producing with whichever snapshot it loads,
 // and the next video stamped gets this one.
 func (ms *modelService) SetVideoConfig(fps int, resolution int) {

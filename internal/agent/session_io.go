@@ -186,8 +186,7 @@ func (s *Session) handleInputFrame(tag, value string, staged []llm.ContentPart) 
 // ============================================================================
 // Registered command handlers — handleFork, handleToolConfirm/Decline
 //
-// These are registered via lookupCommand and dispatched by handleInputMsg
-// according to their cmdImmediate / cmdIdle policy.
+// These are registered via lookupCommand and dispatched by handleInputMsg.
 // ============================================================================
 
 // handleFork saves all content from the start of the session up to (and
@@ -615,11 +614,6 @@ func (s *Session) handleInputMsg(msg inputMsg) {
 		return
 	}
 
-	if cmdDef.Policy == cmdIdle && s.activeTask != nil {
-		s.writeCmdResult(msg.commandID, nil, &cmdErr{Code: protocol.ErrCodeStateBusy,
-			Message: "Cannot run this command while a task is in progress. Please wait or cancel the current task."})
-		return
-	}
 	s.execCommand(s.sessionCtx, msg.commandID, cmdDef, args)
 }
 
@@ -802,13 +796,13 @@ func (s *Session) handleThemeSet(args string) (any, error) {
 // These commands manage MCP server lifecycle: cancel initialization,
 // confirm an OAuth authorization code, or decline an authorization request.
 //
-// All three are immediate, and none of them needs a gate: while a task runs the
-// session is Ready, which is the same condition that makes "MCP initialization
-// is not in progress" the answer, so there is never a pending authorization to
-// act on. The initializer they hand the answer to is built for the crossing —
-// SendAuthCodeResult posts to the goroutine waiting in runOAuthForServer — so
-// the only thing a busy check added was a less accurate refusal
-// (STATE_BUSY instead of STATE_NOT_IN_PROGRESS).
+// None of the three needs a gate, and the reason outlived the gate: while a task
+// runs the session is Ready, which is the same condition that makes "MCP
+// initialization is not in progress" the answer, so there is never a pending
+// authorization to act on. The initializer they hand the answer to is built for
+// the crossing — SendAuthCodeResult posts to the goroutine waiting in
+// runOAuthForServer — so a busy check here would only have replaced the accurate
+// STATE_NOT_IN_PROGRESS with "a task is running", which is not why.
 // ============================================================================
 
 // handleMCPSkip handles the :mcp_skip command.

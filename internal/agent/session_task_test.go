@@ -88,7 +88,7 @@ func TestRunTaskPreservesPartialResultsOnError(t *testing.T) {
 	})
 	session := &Session{
 		sessionConfig: sessionConfig{
-			modelService:  &modelService{agent: agent},
+			modelService:  testModelService(agent, nil, 0),
 			SessionConfig: SessionConfig{NoDelta: true},
 		},
 		sharedState: sharedState{
@@ -141,7 +141,7 @@ func TestDoAutoSummarizePreservesContentsOnError(t *testing.T) {
 	})
 	session := &Session{
 		sessionConfig: sessionConfig{
-			modelService:  &modelService{agent: agent},
+			modelService:  testModelService(agent, nil, 0),
 			SessionConfig: SessionConfig{NoDelta: true},
 		},
 		sharedState: sharedState{
@@ -189,7 +189,7 @@ func TestDoAutoSummarizeBuildSummaryFails(t *testing.T) {
 	})
 	session := &Session{
 		sessionConfig: sessionConfig{
-			modelService:  &modelService{agent: agent},
+			modelService:  testModelService(agent, nil, 0),
 			SessionConfig: SessionConfig{NoDelta: true},
 		},
 		sharedState: sharedState{
@@ -270,7 +270,7 @@ func TestRunTaskKeepsStreamedContentOnPanic(t *testing.T) {
 	agent := llm.NewAgent(llm.AgentConfig{Provider: panicProvider{}, MaxSteps: 3})
 	session := &Session{
 		sessionConfig: sessionConfig{
-			modelService:  &modelService{agent: agent},
+			modelService:  testModelService(agent, nil, 0),
 			SessionConfig: SessionConfig{NoDelta: true},
 		},
 		sharedState: sharedState{histCounter: 100},
@@ -380,7 +380,7 @@ func TestRunTaskResumesACutStream(t *testing.T) {
 	out := &syncOutput{}
 	session := &Session{
 		sessionConfig: sessionConfig{
-			modelService:  &modelService{agent: agent},
+			modelService:  testModelService(agent, nil, 0),
 			SessionConfig: SessionConfig{NoDelta: true, Output: out},
 		},
 		sharedState: sharedState{histCounter: 500, outputBroken: atomic.Bool{}},

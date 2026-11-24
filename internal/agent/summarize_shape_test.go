@@ -121,7 +121,7 @@ func summarizeShapeSession(provider llm.Provider) *Session {
 	})
 	return &Session{
 		sessionConfig: sessionConfig{
-			modelService:  &modelService{agent: agent},
+			modelService:  testModelService(agent, nil, 0),
 			SessionConfig: SessionConfig{NoDelta: true},
 		},
 		sharedState: sharedState{histCounter: 100},

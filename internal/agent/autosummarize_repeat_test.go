@@ -126,11 +126,10 @@ func runOneTask(t *testing.T, s *Session, parts []llm.ContentPart) {
 func newAutoSummarizeTestSession(provider llm.Provider, limit int64, tokens int64) *Session {
 	return &Session{
 		sessionConfig: sessionConfig{
-			modelService:  &modelService{agent: llm.NewAgent(llm.AgentConfig{Provider: provider, MaxSteps: 10})},
+			modelService:  testModelService(llm.NewAgent(llm.AgentConfig{Provider: provider, MaxSteps: 10}), provider, limit),
 			SessionConfig: SessionConfig{NoDelta: true, AutoSummarize: 65},
 		},
 		sharedState: sharedState{
-			ContextLimit:  limit,
 			ContextTokens: tokens,
 		},
 		runState: runState{
@@ -173,7 +172,7 @@ func TestAutoSummarizeEndToEnd_RealRunLoop(t *testing.T) {
 
 	s := &Session{
 		sessionConfig: sessionConfig{
-			modelService: &modelService{agent: agent, provider: provider, contextLimit: 1000},
+			modelService: testModelService(agent, provider, 1000),
 			SessionConfig: SessionConfig{
 				Input:         r,
 				Output:        output,

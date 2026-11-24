@@ -62,7 +62,7 @@ func TestStepPublishDeltas(t *testing.T) {
 	})
 	session := &Session{
 		sessionConfig: sessionConfig{
-			modelService:  &modelService{agent: agent},
+			modelService:  testModelService(agent, nil, 1000),
 			SessionConfig: SessionConfig{NoDelta: true},
 		},
 		sharedState: sharedState{
@@ -137,7 +137,7 @@ func TestRunTaskSummarize_NoTransientPollution(t *testing.T) {
 	agent := llm.NewAgent(llm.AgentConfig{Provider: provider, MaxSteps: 10})
 	session := &Session{
 		sessionConfig: sessionConfig{
-			modelService:  &modelService{agent: agent},
+			modelService:  testModelService(agent, nil, 1000),
 			SessionConfig: SessionConfig{NoDelta: true},
 		},
 		sharedState: sharedState{
@@ -208,14 +208,13 @@ func TestDoAutoSummarizePublishesReplacement(t *testing.T) {
 	agent := llm.NewAgent(llm.AgentConfig{Provider: provider, MaxSteps: 10})
 	session := &Session{
 		sessionConfig: sessionConfig{
-			modelService:  &modelService{agent: agent},
+			modelService:  testModelService(agent, nil, 1000),
 			SessionConfig: SessionConfig{NoDelta: true, AutoSummarize: 100},
 		},
 		sharedState: sharedState{
 			histCounter:   200,
 			outputBroken:  atomic.Bool{},
 			ContextTokens: 1000,
-			ContextLimit:  1000,
 		},
 		runState: runState{
 			taskEventCh: make(chan taskEvent, 20),
@@ -372,7 +371,7 @@ func TestSaveDuringStreaming_EndToEnd(t *testing.T) {
 
 	s := &Session{
 		sessionConfig: sessionConfig{
-			modelService: &modelService{agent: agent, provider: provider},
+			modelService: testModelService(agent, provider, 0),
 			SessionConfig: SessionConfig{
 				Input:       r,
 				Output:      output,

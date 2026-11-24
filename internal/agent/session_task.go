@@ -85,6 +85,13 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 	// (see stepRecord).
 	rec := newStepRecord(history)
 
+	// The model this task runs on, taken once. The agent loop lives inside this
+	// one agent, so a switch published mid-task cannot change the model under a
+	// step: the task finishes on the model it started with, and the window its
+	// threshold checks compare against is that same model's — which is why the
+	// snapshot carries both (see modelRuntime).
+	rt := s.currentRuntime()
+
 	// turnFailed records that this call — the user's task — did not land. The
 	// deferred discard below reads it together with ctx: a task that failed and
 	// a task that was canceled are the same event as far as the user's steering
@@ -189,7 +196,7 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 		// compaction replaces the history wholesale, so a steering part
 		// appended before it would vanish from Contents while the adapter kept
 		// the ID it was shown.
-		if s.exceedsAutoSummarizeThreshold(contextTokens) {
+		if s.exceedsAutoSummarizeThreshold(rt.contextLimit, contextTokens) {
 			compacted, err := s.compactForContinuation(ctx, contents, contextTokens)
 			if err != nil {
 				return nil, fmt.Errorf("Auto-summarization failed: %w", err)
@@ -269,7 +276,7 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 		callbacks.OnToolOutputDelta = dw.handleToolOutputDelta
 	}
 
-	_, err := s.Agent().Stream(ctx, history, callbacks)
+	_, err := rt.agent.Stream(ctx, history, callbacks)
 
 	if err != nil {
 		turnFailed = true
@@ -372,9 +379,9 @@ func (s *Session) applyVideoDefault(part llm.ContentPart) {
 	switch v := part.(type) {
 	case *llm.VideoPart:
 		if v.FPS == 0 && s.modelService != nil {
-			// One load for the pair: :video_config is immediate, so the task
-			// goroutine can be stamping a video while run() swaps the default,
-			// and two reads could pair the new fps with the old res.
+			// One load for the pair: :video_config can land while a task runs,
+			// so the task goroutine can be stamping a video while run() swaps the
+			// default, and two reads could pair the new fps with the old res.
 			d := s.modelService.VideoConfig()
 			v.FPS, v.Res = d.FPS, d.Res
 		}
@@ -825,15 +832,14 @@ func summaryText(parts []llm.ContentPart) (string, bool) {
 // shouldAutoSummarize returns true when auto-summarization is enabled and
 // the current context tokens exceed s.AutoSummarize of the configured limit.
 func (s *Session) shouldAutoSummarize() bool {
-	return s.exceedsAutoSummarizeThreshold(s.ContextTokens)
+	return s.exceedsAutoSummarizeThreshold(s.contextLimit(), s.ContextTokens)
 }
 
 // exceedsAutoSummarizeThreshold reports whether tokens is at or above the
 // configured --auto-summarize percentage of the context limit. It is the one
 // predicate behind both trigger points: the start of a task (shouldAutoSummarize)
 // and each step of a running one (processPrompt's OnBeforeSend). 0 disables it.
-func (s *Session) exceedsAutoSummarizeThreshold(tokens int64) bool {
-	limit := s.ContextLimit
+func (s *Session) exceedsAutoSummarizeThreshold(limit, tokens int64) bool {
 	return s.AutoSummarize > 0 && limit > 0 && tokens > 0 &&
 		tokens >= limit*int64(s.AutoSummarize)/100
 }
@@ -876,7 +882,7 @@ func (s *Session) summarizeBackup(contents []llm.ContentPart, contextTokens int6
 // same rule mid-task). The uncompressed history is returned unchanged and stays
 // the session's, so nothing is lost.
 func (s *Session) doAutoSummarize(ctx context.Context, contents []llm.ContentPart) ([]llm.ContentPart, error) {
-	limit := s.ContextLimit
+	limit := s.contextLimit()
 	usage := float64(s.ContextTokens) * 100 / float64(limit)
 	s.writeNotifyf("Context usage at %d/%d tokens (%.0f%%). Auto-summarizing...",
 		s.ContextTokens, limit, usage)
