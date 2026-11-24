@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -11,6 +12,20 @@ import (
 	"sync"
 	"time"
 )
+
+// refreshRefusedError marks a refresh the authorization server answered and
+// refused: a decision, which is final for this credential, as opposed to a
+// timeout or a 503, which is the absence of one. Only the first kind means the
+// credential is dead — the distinction is what keeps a network blip from costing
+// the user an authorization.
+type refreshRefusedError struct {
+	Status int
+	Body   string
+}
+
+func (e *refreshRefusedError) Error() string {
+	return fmt.Sprintf("token endpoint refused the refresh with %d: %s", e.Status, e.Body)
+}
 
 // RefreshConfig holds the parameters needed to refresh an access token.
 type RefreshConfig struct {
@@ -42,8 +57,12 @@ type RefreshConfig struct {
 //  1. On first Token() call, try loading from disk via TokenStore.
 //  2. If the cached token is expired and has a refresh_token, use the
 //     refresh grant to obtain a new token automatically.
-//  3. If refresh fails (e.g. refresh token expired), fall back to the
-//     inner provider (which may initiate a new interactive flow).
+//  3. If refresh fails (e.g. the refresh token was revoked too), the credential
+//     is dead. Token() falls back to the inner provider, which for the
+//     authorization-code flow holds that same token — so the caller sees the
+//     same refusal, not a new authorization. ForceRefresh is the path that
+//     discards it, and discarding it is what lets the next start authorize
+//     again (needsPersistedAuth reads a stored token as "nothing to do").
 //  4. After any successful token acquisition (refresh or inner provider),
 //     persist the token to disk.
 type PersistentTokenProvider struct {
@@ -276,6 +295,11 @@ func (p *PersistentTokenProvider) doRefreshRequest(req *http.Request, oldRefresh
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		// 4xx is the server's decision about this refresh token; 5xx and 429 are
+		// it saying nothing in particular about it.
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			return nil, &refreshRefusedError{Status: resp.StatusCode, Body: snippet(body)}
+		}
 		return nil, fmt.Errorf("token endpoint returned %d on refresh: %s",
 			resp.StatusCode, snippet(body))
 	}
@@ -315,16 +339,85 @@ func (p *PersistentTokenProvider) doRefreshRequest(req *http.Request, oldRefresh
 	return token, nil
 }
 
+// ErrReauthorizationRequired marks the one authorization failure a retry cannot
+// fix. The server refused the credential and no fresh one could be obtained, so
+// re-sending the request would produce the same answer; only the flow that
+// produced the credential can recover it.
+var ErrReauthorizationRequired = errors.New("authorization is no longer valid")
+
+// Refresher is the capability a TokenProvider may have: obtain a new credential
+// on demand, because the server has just said the current one is no good.
+//
+// It is separate from TokenProvider on purpose. TokenProvider answers "give me a
+// token", which a static credential answers fine; only a provider that holds a
+// refresh grant can answer "give me a different one", and asking the others
+// would be asking for something they do not have.
+type Refresher interface {
+	ForceRefresh(ctx context.Context) error
+}
+
+// ForceRefresh obtains a new access token without consulting the local clock.
+//
+// Token() refreshes only a token it believes has expired, and ExpiresAt is this
+// process's opinion: a server that revoked the credential answers 401 while
+// every local check still passes, so nothing in Token() ever notices. That is
+// the case this exists for — the caller has an answer from the server and needs
+// a credential that outlives it, or none.
+//
+// On success the new token is cached and persisted. When the authorization
+// server refuses the refresh — or there is no refresh grant to spend — the
+// stored credential is discarded, memory and disk, and the error wraps
+// ErrReauthorizationRequired. Discarding is the point: keeping a token the
+// server refuses produces the same 401 on every later request including the next
+// start, because needsPersistedAuth reads "a token with a refresh token" as "no
+// authorization needed" and would never ask again.
+//
+// A refresh that fails without an answer — a timeout, a 503 — discards nothing.
+// That is the absence of a decision about the credential, so the credential
+// stays and the caller gets the transport's own error.
+func (p *PersistentTokenProvider) ForceRefresh(ctx context.Context) error {
+	tok := p.getCached()
+	if tok == nil {
+		tok = p.tryLoadFromDisk()
+	}
+
+	if tok != nil && tok.RefreshToken != "" && p.canRefresh() {
+		newTok, refreshErr := p.refreshToken(ctx, tok.RefreshToken)
+		if refreshErr == nil {
+			p.setCached(newTok)
+			p.persistToken(newTok)
+			return nil
+		}
+		// The authorization server never answered, so it has said nothing about
+		// this credential: keep it and report the failure as what it is. The next
+		// request tries again, and a restart still has a token to start from.
+		var refused *refreshRefusedError
+		if !errors.As(refreshErr, &refused) {
+			return refreshErr
+		}
+		if delErr := p.InvalidateToken(ctx); delErr != nil {
+			return fmt.Errorf("%w (refresh failed: %v; and the stored token could not be removed: %v); re-authorize this server",
+				ErrReauthorizationRequired, refreshErr, delErr)
+		}
+		return fmt.Errorf("%w (refresh failed: %v); re-authorize this server", ErrReauthorizationRequired, refreshErr)
+	}
+
+	// Nothing to refresh with: a token issued without a refresh grant, or a
+	// provider built without refresh configuration. Dead either way.
+	if err := p.InvalidateToken(ctx); err != nil {
+		return fmt.Errorf("%w (no refresh token; and the stored token could not be removed: %v); re-authorize this server",
+			ErrReauthorizationRequired, err)
+	}
+	return fmt.Errorf("%w (no refresh token); re-authorize this server", ErrReauthorizationRequired)
+}
+
 // InvalidateToken clears the cached token and deletes the persisted one from
 // disk, so the next Token() call falls back to the inner provider — in practice
 // a fresh authorization.
 //
-// No production path calls it. The one that looks like it should — the 401
-// retry in mcp's HTTPTransport.doPOST — does not, for the reason written there:
-// the disk delete turns "the server refused this request" into "the user must
-// authorize again", and a 401 cannot tell a bad token from a refusal.
-// TestPersistentTokenProvider_Invalidate is what keeps the two halves (cache,
-// disk) honest until something does call it.
+// Its caller is ForceRefresh, and only after a refresh the server refused: the
+// delete is the part that costs an authorization, so it is spent on the case
+// that has already proved the credential is dead, never on a bare 401.
 func (p *PersistentTokenProvider) InvalidateToken(_ context.Context) error {
 	p.mu.Lock()
 	p.cached = nil

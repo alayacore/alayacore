@@ -257,8 +257,26 @@ grant_type=refresh_token
   }
 ```
 
-If the refresh token is also expired or revoked, the entire flow
-restarts from the authorization step.
+If the authorization server refuses the refresh — the refresh token expired or
+was revoked — AlayaCore discards the stored credential (memory and disk) and
+answers the request with an error saying the server needs authorization again.
+It does not re-send the request with the refused token, and it does not restart
+the authorization flow mid-session: that flow runs at startup, so the next start
+asks. Deleting `~/.alayacore/mcp-cache/{server}.conf` by hand does the same
+thing, and was the only way to do it before.
+
+A refresh that fails without an answer — a timeout, a 503 — is not a refusal.
+The credential is kept and the request fails with the transport's error, so a
+server that was briefly unreachable does not cost an authorization.
+
+## A Token the Server Revokes
+
+Expiry is not the only way a token stops working. A server may revoke one at any
+time, and every local check still passes: the token has not expired, so nothing
+in the refresh logic ever looks at it. That case arrives as a 401 on a request,
+which AlayaCore answers by forcing one refresh rather than by sending the same
+token again — a retry with the credential the server just refused can only be
+refused again.
 
 ## Token Storage
 
@@ -279,7 +297,9 @@ The format uses the same key-value syntax as `mcp.conf`, with JSON-encoded
 values for arrays and maps.
 
 On restart, tokens are loaded from disk. If the stored token is
-expired, it is refreshed automatically without user interaction.
+expired, it is refreshed automatically without user interaction. If the file is
+gone — discarded because the authorization server refused its refresh — the
+authorization flow runs again.
 
 ## The `:mcp_confirm` Command
 

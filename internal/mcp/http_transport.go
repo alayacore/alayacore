@@ -358,14 +358,28 @@ func (t *HTTPTransport) doPOST(ctx context.Context, req jsonrpcRequest) (*http.R
 		return nil, err
 	}
 
-	// If 401 and we have an auth provider, retry once. The token is not
-	// invalidated first: auth.PersistentTokenProvider.InvalidateToken also
-	// deletes the credential from disk, and a 401 does not say the token is
-	// bad — a server-side hiccup, a rotated endpoint or a proxy answering in
-	// the server's place all look identical from here. A second attempt costs
-	// one request; deleting what the user authorized costs a re-authorization.
+	// If 401 and we have an auth provider, get a credential that outlives the
+	// refusal and send the request once more. Re-sending the same one is what
+	// this used to do: the retry re-read the provider, which hands back its
+	// cached token for as long as the local clock says it has not expired — so a
+	// revoked credential went out twice and was refused twice.
+	//
+	// A provider with no refresh grant (a static token from config) gets the
+	// plain retry: there is nothing newer to send, and a transient refusal is
+	// all a second attempt can answer.
+	//
+	// A refresh the authorization server refuses ends the attempt instead of
+	// re-sending. The credential has already been discarded by then, and the
+	// error carries auth.ErrReauthorizationRequired — so the next start asks the
+	// user to authorize again rather than replaying a token that will be refused
+	// for the rest of its life.
 	if resp.StatusCode == http.StatusUnauthorized && t.authProvider != nil {
 		resp.Body.Close()
+		if refresher, ok := t.authProvider.(auth.Refresher); ok {
+			if refreshErr := refresher.ForceRefresh(ctx); refreshErr != nil {
+				return nil, refreshErr
+			}
+		}
 		resp, err = t.doPOSTOnce(ctx, req)
 		if err != nil {
 			return nil, err
