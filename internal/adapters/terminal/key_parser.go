@@ -90,7 +90,6 @@ const (
 	KeyTab       = rune(0x09) // HT
 	KeyEnter     = rune(0x0d) // CR
 	KeyEscape    = rune(0x1b) // ESC
-	KeyEsc       = KeyEscape
 	KeySpace     = rune(0x20) // SP
 )
 

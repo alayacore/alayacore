@@ -104,7 +104,7 @@ func TestScreenMatchesATerminalUnderTmux(t *testing.T) {
 	}
 	h.key('l', ModCtrl) // the model selector on a pane narrower than its box
 	h.step("overlay")
-	h.key(KeyEsc, 0)
+	h.key(KeyEscape, 0)
 	h.step("overlay closed")
 	for i := 0; i < 5; i++ {
 		h.key('k', 0)

@@ -509,11 +509,11 @@ func TestOverlayBoxFitsANarrowPane(t *testing.T) {
 			for _, r := range "gpt" {
 				h.key(r, 0)
 			}
-			h.key(KeyEsc, 0)
+			h.key(KeyEscape, 0)
 			h.key(KeyF1, 0)
-			h.key(KeyEsc, 0)
+			h.key(KeyEscape, 0)
 			h.key('p', ModCtrl)
-			h.key(KeyEsc, 0)
+			h.key(KeyEscape, 0)
 		})
 	}
 }
@@ -635,7 +635,7 @@ func randomSession(h *frameHarness, rng *rand.Rand) {
 		case 9:
 			h.key(KeyTab, 0)
 		case 10:
-			h.key(KeyEsc, 0)
+			h.key(KeyEscape, 0)
 		case 11:
 			h.key(KeyF1, 0)
 		case 12:

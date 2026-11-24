@@ -31,7 +31,7 @@ func TestThemeSelectorCancelRestoresOriginalTheme(t *testing.T) {
 		t.Errorf("Expected selected theme 'theme-light', got '%v'", selected)
 	}
 
-	ts, _ = ts.Update(KeyPressMsg(Key{Code: KeyEsc}))
+	ts, _ = ts.Update(KeyPressMsg(Key{Code: KeyEscape}))
 
 	if ts.IsOpen() {
 		t.Errorf("Expected theme selector to be closed after ESC")
@@ -110,7 +110,7 @@ func TestThemePreviewStaleTickIgnoredAfterCancel(t *testing.T) {
 	pending := cmd
 
 	// Cancel before the debounce fires.
-	m, _ = terminal.Update(KeyPressMsg(Key{Code: KeyEsc}))
+	m, _ = terminal.Update(KeyPressMsg(Key{Code: KeyEscape}))
 	terminal = m.(Terminal)
 
 	// The stale tick fires late (fires the 150ms timer) — it must be

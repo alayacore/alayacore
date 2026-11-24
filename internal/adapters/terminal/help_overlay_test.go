@@ -138,7 +138,7 @@ func TestHelpOverlayCloseKeys(t *testing.T) {
 		if listFocused {
 			hw, _ = hw.Update(KeyPressMsg(Key{Code: KeyTab}))
 		}
-		hw, _ = hw.Update(KeyPressMsg(Key{Code: KeyEsc}))
+		hw, _ = hw.Update(KeyPressMsg(Key{Code: KeyEscape}))
 		if hw.IsOpen() {
 			t.Errorf("esc did not close the help window (list focused: %v)", listFocused)
 		}
