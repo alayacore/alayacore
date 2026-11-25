@@ -429,9 +429,9 @@ func (a *Agent) sendWithRetry(ctx context.Context, contents []ContentPart, callb
 //     other part added at a boundary. A prompt whose caller has no such hook (a
 //     summarize call) is not resumed and keeps its existing retry.
 //   - The user must not have cut it. sendWithRetry reports a cancellation as the
-//     cancellation, and the context check below catches anything else that died
-//     before a resume is announced — a next attempt would refuse to run, so the
-//     notice would be a lie.
+//     cancellation before a resume is considered at all, so a canceled task does
+//     not reach the wait; the check below is the backstop for a cancel that lands
+//     after that point.
 //
 // The budget is maxRetries consecutive resumes, counted by the caller and cleared
 // by a step that lands; a continuation is also a step, so it spends the step budget
@@ -446,8 +446,13 @@ func (a *Agent) resumeStep(ctx context.Context, step, resumes int, err error, ca
 	if resumes >= maxRetries || step >= a.config.MaxSteps {
 		return err
 	}
-	// The user's cancellation outranks the failure it caused, for the reason
-	// sendWithRetry states: the next attempt would refuse to run.
+	// The caller's cancellation outranks the failure it caused, and the budget
+	// has no say in it — the same rule sendWithRetry states for the last
+	// attempt. This is a backstop rather than the usual path: an attempt its
+	// caller gave up on comes back from sendWithRetry already reported as the
+	// cancellation, so what is left here is a cancel that lands after that,
+	// inside OnStepFinish. What it prevents is announcing a resume whose wait
+	// would return the cancellation at once.
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return ctxErr
 	}
