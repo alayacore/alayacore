@@ -61,13 +61,38 @@ var (
 type tty struct {
 	cmd    *exec.Cmd
 	master *os.File
+	// controlling says startProgramOn made the slave this program's controlling
+	// terminal. It is kept so that the one thing that must not happen with such a
+	// pty — taking the terminal away to see whether the program notices — is
+	// refused where it is attempted (takeTerminalAway) instead of being
+	// rediscovered from a puzzling exit status.
+	controlling bool
 
 	closeOnce sync.Once
+
+	// pumpStop ends the pump goroutine and pumpDone says it has ended; stopPump is
+	// the guarded way to ask, because a second close of a channel panics.
+	//
+	// The pump can be *stopped* at all because it polls with a timeout instead of
+	// blocking in a read, and one case depends on that. A read in flight on a pty
+	// master keeps the master open — closing a file waits in Go for a read in
+	// flight on it (the fact TTY.Close is written around) — and a read on a pty
+	// master waits for the program. So closing the master with the pump inside one
+	// would close nothing, leave the slave alive, and make "the terminal went away"
+	// unobservable. takeTerminalAway is the case that needs it.
+	pumpStop     chan struct{}
+	pumpDone     chan struct{}
+	pumpStopOnce sync.Once
 
 	// mu guards buf, the pump goroutine's write end and the test's read end.
 	mu  sync.Mutex
 	buf []byte
 }
+
+// pumpPollTimeout bounds how long one poll of the pump waits for output, in the
+// milliseconds unix.Poll counts in. Output costs nothing — poll returns as soon as
+// there is any — so this bounds only how long a stop request takes to be seen.
+const pumpPollTimeout = 20
 
 // startProgram opens a pty, launches the binary on its slave side as a session
 // leader with that slave as its controlling terminal, and pumps the master into
@@ -75,6 +100,24 @@ type tty struct {
 // /dev/ptmx, the slave number, unlocking it, and TIOCSCTTY are what a terminal
 // emulator does at startup, and golang.org/x/sys/unix (already required) is enough.
 func startProgram(tb *testing.T, binary string) *tty {
+	return startProgramOn(tb, binary, true)
+}
+
+// startProgramWithoutCTTY launches the binary on a pty that is not its controlling
+// terminal: the slave is handed to it as stdin and stdout, which is how a driver
+// that is not a terminal emulator delivers one (pty.spawn, a wrapper, another
+// harness). The difference is one signal. When a master closes, the kernel hangs up
+// the terminal — and a hanging-up terminal sends SIGHUP to the foreground process
+// group of the session it is the controlling terminal of. A check that wants the
+// program to decide for itself cannot use that pty: the kernel would be deciding
+// for it, and the assertion would be about the kernel.
+func startProgramWithoutCTTY(tb *testing.T, binary string) *tty {
+	return startProgramOn(tb, binary, false)
+}
+
+// startProgramOn is the shared body of the two launchers: one pty, one session to
+// run the program in, and the master pumped into memory.
+func startProgramOn(tb *testing.T, binary string, controlling bool) *tty {
 	tb.Helper()
 
 	master, err := os.OpenFile("/dev/ptmx", os.O_RDWR|unix.O_NOCTTY, 0)
@@ -105,11 +148,13 @@ func startProgram(tb *testing.T, binary string) *tty {
 
 	cmd := exec.Command(binary)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = slave, slave, slave
-	// Setsid + Setctty is what a terminal does for its shell: a new session, and
-	// the slave as its controlling terminal. (exec refuses Setctty together with
-	// Foreground; the program never needs to be the session's foreground process
-	// to read its own stdin.)
-	cmd.SysProcAttr = &unix.SysProcAttr{Setsid: true, Setctty: true}
+	// Setsid is what a terminal does for its shell: a new session, so the program's
+	// process group is its own. Setctty then makes the slave that session's
+	// controlling terminal, which is the half startProgramWithoutCTTY leaves out —
+	// and the only half this file varies. (exec refuses Setctty together with
+	// Foreground; the program never needs to be the session's foreground process to
+	// read its own stdin.)
+	cmd.SysProcAttr = &unix.SysProcAttr{Setsid: true, Setctty: controlling}
 	cmd.Env = []string{"TERM=xterm-256color", "LINES=24", "COLUMNS=80", "HOME=" + tb.TempDir()}
 	if err := cmd.Start(); err != nil {
 		slave.Close()
@@ -120,7 +165,13 @@ func startProgram(tb *testing.T, binary string) *tty {
 	// keep the master from ever reporting EOF when the program exits.
 	slave.Close()
 
-	t := &tty{cmd: cmd, master: master}
+	t := &tty{
+		cmd:         cmd,
+		master:      master,
+		controlling: controlling,
+		pumpStop:    make(chan struct{}),
+		pumpDone:    make(chan struct{}),
+	}
 	tb.Cleanup(t.close)
 	go t.pump()
 
@@ -136,25 +187,73 @@ func startProgram(tb *testing.T, binary string) *tty {
 	return t
 }
 
+// pump copies everything the program writes into memory, one polled turn at a
+// time. It polls rather than blocking in a read so that it can be stopped between
+// turns; see the field comment for what depends on that.
 func (t *tty) pump() {
+	defer close(t.pumpDone)
+	pfd := []unix.PollFd{{Fd: int32(t.master.Fd()), Events: unix.POLLIN}}
 	chunk := make([]byte, 4096)
 	for {
-		n, err := t.master.Read(chunk)
-		if n > 0 {
-			t.mu.Lock()
-			t.buf = append(t.buf, chunk[:n]...)
-			t.mu.Unlock()
-		}
-		if err != nil {
+		// Read only what this poll reported ready, never on a stale answer: a read
+		// on a pty master blocks until the program writes, and this goroutine has to
+		// stay stoppable. EINTR is why the condition is n rather than an error check
+		// of its own — a signal (Go's preemption among them) leaves poll's results
+		// unwritten, and reading on those is exactly the block this avoids. The turn
+		// still ends at the stop check below.
+		n, err := unix.Poll(pfd, pumpPollTimeout)
+		if err != nil && err != unix.EINTR {
 			return
 		}
+		if err == nil && n > 0 {
+			read, rerr := t.master.Read(chunk)
+			if read > 0 {
+				t.mu.Lock()
+				t.buf = append(t.buf, chunk[:read]...)
+				t.mu.Unlock()
+			}
+			if rerr != nil {
+				return
+			}
+		}
+		select {
+		case <-t.pumpStop:
+			return
+		default:
+		}
+	}
+}
+
+// stopPump ends the pump goroutine and waits for it, so that afterwards no read of
+// its is in flight on the master.
+func (t *tty) stopPump() {
+	t.pumpStopOnce.Do(func() { close(t.pumpStop) })
+	<-t.pumpDone
+}
+
+// takeTerminalAway makes the program's terminal go away, the way a driver that
+// disappears does: the master is closed, and the slave's reads end. The pump is
+// stopped first — a read in flight on a pty master holds the master open, so
+// closing it there closes nothing — and that ordering is the whole of this method.
+func (t *tty) takeTerminalAway(tb *testing.T) {
+	tb.Helper()
+	if t.controlling {
+		// A controlling terminal ends the program for us: closing the master hangs
+		// it up, and the kernel sends SIGHUP to the foreground process group — so
+		// the program dies whether or not it noticed anything. A check built on
+		// that is a check of Linux, and its exit status (a signal, not 0) says so
+		// only to somebody who already knows. Refused here, where the mistake is.
+		tb.Fatalf("this pty is the program's controlling terminal: use startProgramWithoutCTTY for a check about the program noticing its input is gone")
+	}
+	t.stopPump()
+	if err := t.master.Close(); err != nil {
+		tb.Fatalf("closing the pty master: %v", err)
 	}
 }
 
 // close stops the program and releases the pty. Both the test body and its
 // cleanup call it, so the work is guarded by closeOnce: the second caller does
-// nothing. Closing the master is what unblocks the pump goroutine's Read with
-// an error, which ends it.
+// nothing.
 func (t *tty) close() {
 	t.closeOnce.Do(func() {
 		if t.cmd != nil && t.cmd.Process != nil {
@@ -168,9 +267,31 @@ func (t *tty) close() {
 			}
 		}
 		if t.master != nil {
+			// Stop the pump before letting go of the master: with a read still in
+			// flight, Close returns without closing anything (see the field
+			// comment), and the descriptor would outlive the test.
+			t.stopPump()
 			t.master.Close()
 		}
 	})
+}
+
+// exitsWithin waits for the program to end on its own, returning the state it
+// ended in, or false when it is still running at the deadline. It reaps the
+// process, so a later close finds nothing left to signal.
+func (t *tty) exitsWithin(tb *testing.T, limit time.Duration) (*os.ProcessState, bool) {
+	tb.Helper()
+	done := make(chan struct{})
+	go func() {
+		_ = t.cmd.Wait() // an exit nobody asked for still has a state to report
+		close(done)
+	}()
+	select {
+	case <-done:
+		return t.cmd.ProcessState, true
+	case <-time.After(limit):
+		return nil, false
+	}
 }
 
 // send writes bytes as the terminal side. chunk > 0 delivers in fixed-size
@@ -409,5 +530,38 @@ func TestEndToEndOverPty(t *testing.T) {
 			t.Error("a character split across reads reached the screen as U+FFFD: the parser is not holding an incomplete encoding")
 		}
 		th.close()
+	})
+
+	// 6. A terminal that goes away ends the program.
+	//
+	//    A TUI with no input stream has no session left to drive, and the read is
+	//    where it finds out. The unit half of this is
+	//    TestProgramExitsWhenItsInputSourceEnds — a source that ends ends the loop
+	//    — and what this case adds is the rest of the way out: raw mode, the
+	//    alternate screen, and the model's teardown, over a real pty.
+	//
+	//    The pty is deliberately not the program's controlling terminal, because a
+	//    controlling one would end the program for us: closing the master hangs the
+	//    terminal up, and the kernel sends SIGHUP to the foreground process group
+	//    of the session that terminal belongs to. A test that passed on that would
+	//    be asserting that the kernel works.
+	//
+	//    What the failure looks like is worth stating, because nothing else here
+	//    would notice it: the reader gone, no message that could ever arrive, and
+	//    the tick chain still arming — a process painting into a terminal whose
+	//    other end nobody holds, for as long as the machine is up.
+	t.Run("a terminal that disappears ends the program", func(t *testing.T) {
+		th := startProgramWithoutCTTY(t, binary)
+		th.takeTerminalAway(t)
+
+		state, ended := th.exitsWithin(t, 5*time.Second)
+		if !ended {
+			t.Fatal("the program outlived its terminal")
+		}
+		// The same orderly end a signal gets, not an error: there is no terminal
+		// left to report one to.
+		if code := state.ExitCode(); code != 0 {
+			t.Errorf("the program exited %d when its terminal went away, want 0", code)
+		}
 	})
 }

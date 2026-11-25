@@ -235,8 +235,10 @@ type Program struct {
 	// editor handoff, Ctrl-Z — the input loop parks so a foreground child gets
 	// every keystroke, and no read of ours is left pending on the terminal.
 	// inputPaused is the request; parkedCh is the loop's acknowledgement;
-	// resumeCh wakes it again; inputStopped says the loop is gone for good,
-	// which is what the teardown waits for before closing the terminal.
+	// resumeCh wakes it again; inputStopped says the loop is gone for good, which
+	// is what the teardown waits for before closing the terminal — and what the
+	// event loop ends on, because a program whose only reader has stopped can
+	// never be given another keystroke (run).
 	keys         keySource
 	inputPaused  atomic.Bool
 	parkedCh     chan struct{}
@@ -364,6 +366,16 @@ func (p *Program) run(model Model) (Model, error) {
 		select {
 		case msg, ok = <-p.inputMsgs:
 		case msg, ok = <-p.msgs:
+		case <-p.inputStopped:
+			// The keyboard's only reader is gone for good, and the only thing that
+			// ends it is the terminal going away: in raw mode a read cannot end on
+			// Ctrl-D (ISIG, ICANON and VEOF are off), so what it ends on is EOF or
+			// EIO from a pty whose other end is closed. No input can ever arrive
+			// again, so the session is over — and it ends the way a signal ends it,
+			// with the same teardown and the same exit code. Waiting instead is what
+			// leaves a process whose reader has stopped, kept alive by the tick chain
+			// alone and painting into a terminal nobody holds the other end of.
+			return model, nil
 		}
 		if !ok {
 			// A closed channel ends the loop, as `for range` did before the

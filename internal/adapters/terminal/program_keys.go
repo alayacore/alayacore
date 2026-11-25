@@ -48,6 +48,11 @@ const (
 // finishing — and it announces that it is finished either way, because the
 // teardown may not hand the terminal back before then (stopKeys).
 //
+// A source that reports an error is not merely a loop that stops: it is the
+// program's end, because nothing else can ever deliver a keystroke again. run
+// draws that conclusion from the announcement this function makes, and says why a
+// failed read can only mean the terminal is gone.
+//
 // An incomplete escape sequence is resolved here, on *silence*, and not on the
 // read that happened to stop in the middle of it. The difference is the whole of
 // a bug: this loop is the only reader, so a wait that does not read cannot

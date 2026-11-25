@@ -81,6 +81,37 @@ func TestInputIsDrainedBeforeOutputBacklog(t *testing.T) {
 	}
 }
 
+// TestProgramExitsWhenItsInputSourceEnds pins the program's answer to a source
+// that is gone for good. A read ends with an error for one reason — the terminal
+// is no longer there; in raw mode Ctrl-D is a byte, not EOF — and no input can
+// ever arrive again after it, so the loop must end rather than wait on a keyboard
+// that does not exist. The failure this guards against is the silent one: the
+// reader gone, the tick chain still arming, and a process painting nowhere, which
+// is how a program outlives its terminal without anybody noticing.
+func TestProgramExitsWhenItsInputSourceEnds(t *testing.T) {
+	msgs := make(chan Msg, 1)
+	p, _ := newTestProgram(msgs)
+	input := newFakeKeys()
+	close(input.tokens) // the next read is io.EOF, the way a terminal that is gone reads
+	p.keys, p.parser, p.inputStopped = input, &KeyParser{}, make(chan struct{})
+	m := &fakeModel{}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := p.run(m)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("run did not return after its input source ended")
+	}
+}
+
 // TestProgramExitsWhenMsgsCloses pins the graceful exit the input split must not
 // have removed: a closed channel ends the loop, instead of delivering a zero
 // (nil) message forever — a busy loop in production, a fatal unknown message
