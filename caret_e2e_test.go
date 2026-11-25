@@ -52,8 +52,9 @@ package main_test
 // and TestInputFieldFuzzInvariants, both of which fail on a window one cell too wide.
 //
 // Linux-only and skipped under -short, like the other two checks that need a real
-// terminal. It runs tmux on its own socket (-L), so a tmux the reader is working
-// in is left alone; only that socket's server is killed, on cleanup.
+// terminal. Its pane — a tmux server on a socket of its own, which ends with the
+// test — is internal/tmuxpane's, the same one the terminal adapter's replay check
+// uses.
 
 import (
 	"fmt"
@@ -65,51 +66,24 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/alayacore/alayacore/internal/tmuxpane"
 )
 
-// tmuxProgram is one run of the program inside a tmux pane, on a socket nothing
-// else uses.
-type tmuxProgram struct {
-	tb      *testing.T
-	tmux    string
-	socket  string
-	session string
-	// dir is what the pane runs with as HOME, and where its launcher script is
-	// written. sockDir is TMUX_TMPDIR for every invocation: where the socket
-	// file lands. The two are apart because a socket path is length-capped and
-	// this name is long.
-	dir     string
-	sockDir string
+// caretProgram is a pane from internal/tmuxpane plus this file's reading side:
+// where the caret is, which row it sits on, and when the program has stopped
+// painting. The pane's lifetime is the shared harness's business; what a caret
+// looks like in a frame is this test's, so the two are apart.
+type caretProgram struct {
+	*tmuxpane.Pane
+	tb *testing.T
 }
 
 // startProgramInTmux launches the binary in a detached tmux pane of the given size
 // and waits for the prompt, mirroring what startProgram waits for over a pty.
-func startProgramInTmux(tb *testing.T, tmux, binary string, width, height int) *tmuxProgram {
+func startProgramInTmux(tb *testing.T, tmux, binary string, width, height int) *caretProgram {
 	tb.Helper()
-	// The socket file goes in a directory of this program's own, not tmux's
-	// default (/tmp/tmux-<uid>): kill-server stops the server but leaves the file
-	// behind, so the default location collected one per run and nothing owned
-	// them. Short on purpose — a socket path is capped near 108 bytes, and
-	// tb.TempDir()'s name is long enough to reach that on its own.
-	sockDir, err := os.MkdirTemp("", "alaya-caret-")
-	if err != nil {
-		tb.Fatalf("making a tmux socket directory: %v", err)
-	}
-	// Registered before p.close below, so the server is killed before the
-	// directory holding its socket is taken away.
-	tb.Cleanup(func() { _ = os.RemoveAll(sockDir) })
-	p := &tmuxProgram{
-		tb:   tb,
-		tmux: tmux,
-		// A socket of its own, and a fresh one per instance: the cases run in
-		// sequence and each kills its server on cleanup, so reusing a name would
-		// let a new-session land on a server that is still exiting.
-		socket:  fmt.Sprintf("alaya-caret-%d-%d", os.Getpid(), time.Now().UnixNano()),
-		session: "caret",
-		dir:     tb.TempDir(),
-		sockDir: sockDir,
-	}
-	tb.Cleanup(p.close)
+	p := &caretProgram{Pane: tmuxpane.New(tb, tmux), tb: tb}
 
 	// tmux takes the pane's command as one argument and then splits it again with
 	// its own rules, which are not a shell's — quoted paths come through with their
@@ -117,60 +91,26 @@ func startProgramInTmux(tb *testing.T, tmux, binary string, width, height int) *
 	// does parse, and tmux is handed the script's path, which has nothing to split.
 	// HOME is empty and private: startProgram does the same over a pty, so a
 	// reader's own configuration cannot decide what this test starts up against.
-	launch := filepath.Join(p.dir, "launch.sh")
-	script := "#!/bin/sh\nexec env HOME=" + shellQuote(p.dir) + " TERM=xterm-256color " + shellQuote(binary) + "\n"
+	launch := filepath.Join(p.Dir(), "launch.sh")
+	script := "#!/bin/sh\nexec env HOME=" + tmuxpane.Quote(p.Dir()) +
+		" TERM=xterm-256color " + tmuxpane.Quote(binary) + "\n"
 	if err := os.WriteFile(launch, []byte(script), 0o700); err != nil {
 		tb.Fatalf("writing the pane's launcher: %v", err)
 	}
-	p.run("new-session", "-d", "-x", strconv.Itoa(width), "-y", strconv.Itoa(height),
-		"-s", p.session, launch)
+	p.Session("caret", width, height, launch)
 
 	if !p.waitPrompt(15 * time.Second) {
-		p.close()
-		tb.Fatalf("the TUI never painted the prompt in tmux; the pane reads:\n%s", p.pane())
+		p.Close()
+		tb.Fatalf("the TUI never painted the prompt in tmux; the pane reads:\n%s", p.Text())
 	}
 	p.settle(400*time.Millisecond, 10*time.Second)
 	return p
 }
 
-func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
-
-// tmuxEnv is the environment every tmux invocation of this program runs with.
-// TMUX and TMUX_PANE are cleared: tmux refuses to start a server from inside a
-// session it thinks it would have to nest in, and these checks run under
-// whatever shell the reader used. TMUX_TMPDIR is where the socket file is put,
-// so it is this program's own directory — the one tb.Cleanup removes. run and
-// close both go through here, because a close that looked in another directory
-// would kill nothing and leave the server running.
-func (p *tmuxProgram) tmuxEnv() []string {
-	return append(os.Environ(), "TMUX=", "TMUX_PANE=", "TMUX_TMPDIR="+p.sockDir)
-}
-
-// run invokes tmux on this program's socket and returns its output. -L puts the
-// server on a socket of its own; see tmuxEnv for the rest of the environment.
-func (p *tmuxProgram) run(args ...string) string {
-	p.tb.Helper()
-	cmd := exec.Command(p.tmux, append([]string{"-L", p.socket}, args...)...)
-	cmd.Env = p.tmuxEnv()
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		p.tb.Fatalf("tmux %s: %v\n%s", strings.Join(args, " "), err, out)
-	}
-	return string(out)
-}
-
-// close kills this socket's server and nothing else. The reader's tmux, if any, is
-// on the default socket.
-func (p *tmuxProgram) close() {
-	cmd := exec.Command(p.tmux, "-L", p.socket, "kill-server")
-	cmd.Env = p.tmuxEnv()
-	_ = cmd.Run() // already dead when a test failed early; not an error worth having
-}
-
-func (p *tmuxProgram) waitPrompt(timeout time.Duration) bool {
+func (p *caretProgram) waitPrompt(timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		if strings.Contains(p.pane(), promptMark) {
+		if strings.Contains(p.Text(), promptMark) {
 			return true
 		}
 		time.Sleep(50 * time.Millisecond)
@@ -178,28 +118,12 @@ func (p *tmuxProgram) waitPrompt(timeout time.Duration) bool {
 	return false
 }
 
-// pane is the whole visible screen, as tmux draws it.
-func (p *tmuxProgram) pane() string {
-	return p.run("capture-pane", "-p", "-t", p.session)
-}
-
-// rowAt is one screen row, 0-indexed the way #{cursor_y} is.
-func (p *tmuxProgram) rowAt(y int) string {
-	p.tb.Helper()
-	rows := strings.Split(strings.TrimSuffix(p.pane(), "\n"), "\n")
-	if y < 0 || y >= len(rows) {
-		p.tb.Fatalf("the pane has %d rows; there is no row %d", len(rows), y)
-	}
-	return rows[y]
-}
-
 // caret is where the terminal thinks the cursor is. A frame that does not move it
 // leaves the previous reading in place, which is the point: the terminal's idea of
 // the caret is the current one, not this frame's.
-func (p *tmuxProgram) caret() (x, y int, shown bool) {
+func (p *caretProgram) caret() (x, y int, shown bool) {
 	p.tb.Helper()
-	out := strings.TrimSpace(p.run("display-message", "-p", "-t", p.session,
-		"#{cursor_x} #{cursor_y} #{cursor_flag}"))
+	out := p.Format("#{cursor_x} #{cursor_y} #{cursor_flag}")
 	f := strings.Fields(out)
 	if len(f) != 3 {
 		p.tb.Fatalf("tmux reported the cursor as %q", out)
@@ -220,11 +144,11 @@ func (p *tmuxProgram) caret() (x, y int, shown bool) {
 // tick of its own, so the caret is read again afterwards and the pair is retaken if
 // it moved in between — a row and a caret from different frames would report a
 // disagreement between them that neither has.
-func (p *tmuxProgram) reading() (x, y int, shown bool, row string) {
+func (p *caretProgram) reading() (x, y int, shown bool, row string) {
 	p.tb.Helper()
 	for attempt := 0; attempt < 20; attempt++ {
 		x, y, shown = p.caret()
-		row = p.rowAt(y)
+		row = p.Row(y)
 		x2, y2, shown2 := p.caret()
 		if x == x2 && y == y2 && shown == shown2 {
 			return x, y, shown, row
@@ -236,7 +160,7 @@ func (p *tmuxProgram) reading() (x, y int, shown bool, row string) {
 
 // settle waits for the pane and the caret to stop changing, so a reading is taken
 // from a frame the program finished painting.
-func (p *tmuxProgram) settle(quiet, limit time.Duration) {
+func (p *caretProgram) settle(quiet, limit time.Duration) {
 	p.tb.Helper()
 	deadline := time.Now().Add(limit)
 	var last string
@@ -244,7 +168,7 @@ func (p *tmuxProgram) settle(quiet, limit time.Duration) {
 	for time.Now().Before(deadline) {
 		time.Sleep(50 * time.Millisecond)
 		x, y, shown := p.caret()
-		now := fmt.Sprintf("%s|%d,%d,%v", p.pane(), x, y, shown)
+		now := fmt.Sprintf("%s|%d,%d,%v", p.Text(), x, y, shown)
 		if now == last {
 			still += 50 * time.Millisecond
 			if still >= quiet {
@@ -255,23 +179,6 @@ func (p *tmuxProgram) settle(quiet, limit time.Duration) {
 		still, last = 0, now
 	}
 	p.tb.Logf("the pane never went quiet within %v; readings may be mid-frame", limit)
-}
-
-// paste delivers text as a bracketed paste, through a file so the bytes are exact.
-func (p *tmuxProgram) paste(text string) {
-	p.tb.Helper()
-	f := filepath.Join(p.dir, "paste")
-	if err := os.WriteFile(f, []byte(text), 0o600); err != nil {
-		p.tb.Fatalf("writing the paste buffer: %v", err)
-	}
-	p.run("load-buffer", "-b", "caret", f)
-	p.run("paste-buffer", "-p", "-b", "caret", "-t", p.session)
-}
-
-// key sends named keys — Left, Home, End — as tmux spells them.
-func (p *tmuxProgram) key(names ...string) {
-	p.tb.Helper()
-	p.run(append([]string{"send-keys", "-t", p.session}, names...)...)
 }
 
 // TestCaretAndTextAgreeAboutTheWindowUnderTmux walks the caret across lines wider
@@ -315,9 +222,9 @@ func TestCaretAndTextAgreeAboutTheWindowUnderTmux(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := startProgramInTmux(t, tmux, binary, width, height)
-			defer p.close()
+			defer p.Close()
 
-			p.paste(tc.line)
+			p.Paste(tc.line)
 			p.settle(400*time.Millisecond, 10*time.Second)
 			line := []rune(tc.line)
 			total := cellsBefore(t, line, len(line))
@@ -326,7 +233,7 @@ func TestCaretAndTextAgreeAboutTheWindowUnderTmux(t *testing.T) {
 			// the field's first cell, so the column the caret is drawn at is the
 			// column the field's text starts at. It is read rather than assumed
 			// because the chrome to its left is not this test's business.
-			p.key("Home")
+			p.SendKeys("Home")
 			p.settle(300*time.Millisecond, 5*time.Second)
 			hx, hy, shown, homeRow := p.reading()
 			if !shown {
@@ -389,7 +296,7 @@ func TestCaretAndTextAgreeAboutTheWindowUnderTmux(t *testing.T) {
 			// the drawn caret may hold still or move left as the window follows it —
 			// but it may never move right, which is the one direction a caret cannot
 			// go when the key pressed was Left.
-			p.key("End")
+			p.SendKeys("End")
 			p.settle(300*time.Millisecond, 5*time.Second)
 			end := check("at End", len(line))
 			// At End the window must run to the line's end. A caret after the last
@@ -412,7 +319,7 @@ func TestCaretAndTextAgreeAboutTheWindowUnderTmux(t *testing.T) {
 			prev, pos := end, len(line)
 			for _, target := range samplePositions(t, line, w) {
 				for i := 0; i < pos-target; i++ {
-					p.key("Left")
+					p.SendKeys("Left")
 				}
 				if pos != target {
 					p.settle(250*time.Millisecond, 5*time.Second)
@@ -439,7 +346,7 @@ func TestCaretAndTextAgreeAboutTheWindowUnderTmux(t *testing.T) {
 					continue
 				}
 				for i := 0; i < target-pos; i++ {
-					p.key("Right")
+					p.SendKeys("Right")
 				}
 				p.settle(250*time.Millisecond, 5*time.Second)
 				pos = target
@@ -461,13 +368,13 @@ func TestCaretAndTextAgreeAboutTheWindowUnderTmux(t *testing.T) {
 func learnFieldWidth(t *testing.T, tmux, binary string, width, height int) int {
 	t.Helper()
 	p := startProgramInTmux(t, tmux, binary, width, height)
-	defer p.close()
+	defer p.Close()
 
 	// Longer than the pane, so Home's window is limited by the field and not by the
 	// line it is a window of.
-	p.paste(strings.Repeat("x", width*4))
+	p.Paste(strings.Repeat("x", width*4))
 	p.settle(400*time.Millisecond, 10*time.Second)
-	p.key("Home")
+	p.SendKeys("Home")
 	p.settle(300*time.Millisecond, 5*time.Second)
 
 	x, _, shown, row := p.reading()

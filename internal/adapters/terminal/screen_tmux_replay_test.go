@@ -33,8 +33,9 @@ package terminal
 // assertMatchesModel says which rows are asserted and which are only reported.
 //
 // Linux-only and skipped under -short, like tty_e2e_test.go: it spawns a tmux
-// server and waits on paint timing. It runs on its own socket (-L), so a tmux
-// the reader is working in is left alone.
+// server and waits on paint timing. The pane is internal/tmuxpane's — a server on
+// a socket of its own, which ends with the test — so a tmux the reader is working
+// in is left alone.
 
 import (
 	"fmt"
@@ -46,6 +47,7 @@ import (
 	"time"
 
 	"github.com/alayacore/alayacore/internal/testenv"
+	"github.com/alayacore/alayacore/internal/tmuxpane"
 )
 
 func TestScreenMatchesATerminalUnderTmux(t *testing.T) {
@@ -216,55 +218,24 @@ func replayInTmuxJoined(t *testing.T, tmux string, width, height int, stream []b
 
 func replayInTmuxCapture(t *testing.T, tmux string, width, height int, stream []byte, chunk int, join bool) []string {
 	t.Helper()
-	dir := t.TempDir()
-	src := filepath.Join(dir, "stream.bin")
+	p := tmuxpane.New(t, tmux)
+	src := filepath.Join(p.Dir(), "stream.bin")
 	if err := os.WriteFile(src, stream, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	done := filepath.Join(dir, "done")
-	// The socket file goes in this test's own directory, not tmux's default
-	// (/tmp/tmux-<uid>): kill-server stops the server but leaves the file behind.
-	// Short on purpose — a socket path is capped near 108 bytes.
-	sockDir, err := os.MkdirTemp("", "alaya-replay-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Registered before the kill-server cleanup below, so the server goes first.
-	t.Cleanup(func() { _ = os.RemoveAll(sockDir) })
-	// A name of its own, fresh per run. It was filepath.Base(dir), which is the
-	// subtest's "001" — the same name every run, over a socket file that was
-	// never removed. That is the reuse the caret e2e avoids by naming its socket
-	// with the pid and the clock.
-	socket := fmt.Sprintf("alaya-replay-%d-%d", os.Getpid(), time.Now().UnixNano())
-	// TMUX and TMUX_PANE are cleared for the same reason the caret e2e clears
-	// them: these checks run under whatever shell the reader used.
-	env := append(os.Environ(), "TMUX=", "TMUX_PANE=", "TMUX_TMPDIR="+sockDir)
+	done := filepath.Join(p.Dir(), "done")
 
 	// Every path in the pane's command is quoted. The command is a shell string
 	// and the paths carry the test's name (t.TempDir() does), so a subtest name
 	// with a space or a parenthesis would otherwise end the command early: the
 	// pane's shell exits, the session ends, the server exits, and this harness
 	// waits out its deadline instead of failing where the mistake is.
-	cat := "cat " + shellQuote(src)
+	cat := "cat " + tmuxpane.Quote(src)
 	if chunk > 0 {
-		cat = fmt.Sprintf("dd if=%s bs=%d 2>/dev/null", shellQuote(src), chunk)
+		cat = fmt.Sprintf("dd if=%s bs=%d 2>/dev/null", tmuxpane.Quote(src), chunk)
 	}
-	pane := fmt.Sprintf("%s; touch %s; exec sleep 30", cat, shellQuote(done))
-
-	// A socket of its own: the reader's tmux, if any, is not this test's to
-	// kill.
-	run := func(verb ...string) *exec.Cmd {
-		cmd := exec.Command(tmux, append([]string{"-L", socket}, verb...)...)
-		cmd.Env = env
-		return cmd
-	}
-	if out, err := run("new-session", "-d", "-s", "replay",
-		"-x", fmt.Sprint(width), "-y", fmt.Sprint(height), "sh", "-c", pane).CombinedOutput(); err != nil {
-		t.Fatalf("tmux new-session: %v\n%s", err, out)
-	}
-	t.Cleanup(func() {
-		_ = run("kill-server").Run()
-	})
+	pane := fmt.Sprintf("%s; touch %s; exec sleep 30", cat, tmuxpane.Quote(done))
+	p.Session("replay", width, height, "sh", "-c", pane)
 
 	deadline := time.Now().Add(30 * time.Second)
 	for {
@@ -279,20 +250,7 @@ func replayInTmuxCapture(t *testing.T, tmux string, width, height int, stream []
 	// The pane has the bytes; give the server its redraw.
 	time.Sleep(300 * time.Millisecond)
 
-	args := []string{"capture-pane", "-p"}
-	if join {
-		args = append(args, "-J")
-	}
-	args = append(args, "-t", "replay")
-	out, err := run(args...).Output()
-	if err != nil {
-		t.Fatalf("tmux capture-pane: %v", err)
-	}
-	lines := strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")
-	for i, l := range lines {
-		lines[i] = strings.TrimRight(l, " ")
-	}
-	return lines
+	return p.Rows(join)
 }
 
 // compareLines renders a line-by-line difference between the modeled screen
@@ -312,10 +270,4 @@ func compareLines(want, got []string) string {
 		}
 	}
 	return b.String()
-}
-
-// shellQuote wraps s in single quotes for a shell command, escaping any single
-// quote inside it, so a path with a space, parenthesis or quote is one word.
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
