@@ -11,13 +11,12 @@
 // and two copies of a lifetime rule is how a rule comes to disagree with itself;
 // it is written here once.
 //
-// The lifetime rule is the part to know before reading the code. Cleanups do not
-// run when the test binary is killed — which is how a long test run is most often
-// stopped — and a tmux server is a daemon: it outlives the process that started
-// it, and the program running in one of its panes outlives both, invisible and
-// ticking forever. So the server here is not a daemon (New): it is a child of the
-// test carrying Pdeathsig, which is the one mechanism that survives the test's own
-// SIGKILL. Close is then the orderly path, not the only one.
+// The lifetime rule is the part to know before reading the code, and it is stated
+// once in docs/development-principles.md → "A test reaps what it starts": a
+// cleanup does not run when the test binary is killed, so a process this package
+// starts has to end with the test by some other means. Here that is the shape of
+// the server itself — not a daemon, but a child of the test carrying Pdeathsig
+// (New) — which makes Close the orderly path rather than the only one.
 //
 // Linux-only, like both callers: what keeps the server inside the test's lifetime
 // is a Linux facility, and a pane for a check that cannot build here is a pane
@@ -25,6 +24,7 @@
 package tmuxpane
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -59,9 +59,9 @@ type Pane struct {
 	closeOnce sync.Once
 }
 
-// New starts a tmux server of this test's own: a socket nothing else on the
-// machine uses, a directory for the files a case needs, and the cleanups that take
-// both away.
+// New starts a tmux server of this test's own — a socket nothing else on the
+// machine uses, and a directory for the files a case needs — and registers the
+// cleanup that takes both away.
 //
 // The server is started here, in the one mode that does not daemonize (-D) — see
 // the package comment for why that is the whole point — and with -f /dev/null, so
@@ -81,16 +81,22 @@ func New(t *testing.T, tmux string) *Pane {
 		dir:  t.TempDir(),
 		sock: filepath.Join(sockDir, "sock"),
 	}
+	// Registered before the server exists, so a server that refuses to start still
+	// takes its socket directory with it.
+	t.Cleanup(p.Close)
 	// -D takes no command, so the session is started separately, by Session.
 	p.srv = exec.Command(p.tmux, "-D", "-S", p.sock, "-f", "/dev/null") //nolint:gosec // G204: the program is tmux, and the arguments are a socket path this package made
 	p.srv.Env = p.env()
 	// SIGKILL, not SIGTERM: the case this covers is a parent that is already gone,
-	// so there is nobody left to be polite to.
+	// so there is nobody left to be polite to. A parent-death signal follows the
+	// thread that forked rather than the process, which is a sharp edge for a
+	// language that retires threads — the forking thread here is an ordinary
+	// runtime one, which is parked rather than retired, and a spurious kill would be
+	// loud (the next command fails) rather than a wrong result.
 	p.srv.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
 	if err := p.srv.Start(); err != nil {
 		t.Fatalf("starting a tmux server: %v", err)
 	}
-	t.Cleanup(p.Close)
 	p.waitForServer(10 * time.Second)
 	return p
 }
@@ -128,25 +134,33 @@ func (p *Pane) Dir() string { return p.dir }
 func (p *Pane) Session(name string, width, height int, command ...string) {
 	p.t.Helper()
 	args := []string{"new-session", "-d", "-s", name, "-x", strconv.Itoa(width), "-y", strconv.Itoa(height)}
-	p.Run(append(args, command...)...)
+	p.run(append(args, command...)...)
 	p.session = name
 }
 
-// Run invokes tmux on this pane's server and returns its output, failing the test
-// if tmux does.
-func (p *Pane) Run(args ...string) string {
+// run invokes tmux on this pane's server and returns its output, failing the test
+// if tmux does. Only stdout is the answer: stderr is tmux's complaint, and a
+// capture that merged the two would put a warning in the middle of the screen it
+// was asked for. It is unexported on purpose — a check reaches tmux through a
+// method here, so a new verb is added in one place rather than spelled in a test
+// file.
+func (p *Pane) run(args ...string) string {
 	p.t.Helper()
-	out, err := p.command(args...).CombinedOutput()
-	if err != nil {
-		p.t.Fatalf("tmux %s: %v\n%s", strings.Join(args, " "), err, out)
+	var out, complaint bytes.Buffer
+	cmd := p.command(args...)
+	cmd.Stdout, cmd.Stderr = &out, &complaint
+	if err := cmd.Run(); err != nil {
+		p.t.Fatalf("tmux %s: %v\n%s%s", strings.Join(args, " "), err, out.String(), complaint.String())
 	}
-	return string(out)
+	return out.String()
 }
 
-// Text is the whole visible pane, as tmux draws it.
+// Text is the whole visible pane as tmux draws it, trailing spaces and all: the
+// caret check compares snapshots of it for sameness, and a row the program blanked
+// by writing spaces over it is a change. Rows is the reading side.
 func (p *Pane) Text() string {
 	p.t.Helper()
-	return p.Run("capture-pane", "-p", "-t", p.session)
+	return p.run("capture-pane", "-p", "-t", p.session)
 }
 
 // Rows is the pane's visible rows, right-trimmed. With join, the rows tmux
@@ -158,7 +172,7 @@ func (p *Pane) Rows(join bool) []string {
 		args = append(args, "-J")
 	}
 	args = append(args, "-t", p.session)
-	lines := strings.Split(strings.TrimSuffix(p.Run(args...), "\n"), "\n")
+	lines := strings.Split(strings.TrimSuffix(p.run(args...), "\n"), "\n")
 	for i, l := range lines {
 		lines[i] = strings.TrimRight(l, " ")
 	}
@@ -179,13 +193,13 @@ func (p *Pane) Row(y int) string {
 // "#{cursor_x} #{cursor_y} #{cursor_flag}".
 func (p *Pane) Format(f string) string {
 	p.t.Helper()
-	return strings.TrimSpace(p.Run("display-message", "-p", "-t", p.session, f))
+	return strings.TrimSpace(p.run("display-message", "-p", "-t", p.session, f))
 }
 
 // SendKeys sends named keys — Left, Home, End — as tmux spells them.
 func (p *Pane) SendKeys(names ...string) {
 	p.t.Helper()
-	p.Run(append([]string{"send-keys", "-t", p.session}, names...)...)
+	p.run(append([]string{"send-keys", "-t", p.session}, names...)...)
 }
 
 // Paste delivers text as a bracketed paste. It goes through a file rather than
@@ -196,8 +210,8 @@ func (p *Pane) Paste(text string) {
 	if err := os.WriteFile(f, []byte(text), 0o600); err != nil {
 		p.t.Fatalf("writing the paste buffer: %v", err)
 	}
-	p.Run("load-buffer", "-b", "paste", f)
-	p.Run("paste-buffer", "-p", "-b", "paste", "-t", p.session)
+	p.run("load-buffer", "-b", "paste", f)
+	p.run("paste-buffer", "-p", "-b", "paste", "-t", p.session)
 }
 
 // Close takes this pane away and nothing else: the reader's tmux, if any, is on
@@ -228,7 +242,7 @@ func (p *Pane) Close() {
 // file, which is what makes this server nobody else's; env carries the rest (see
 // Pane.env).
 func (p *Pane) command(args ...string) *exec.Cmd {
-	cmd := exec.Command(p.tmux, append([]string{"-S", p.sock}, args...)...) //nolint:gosec // G204: as in New: tmux, this pane's own socket, and the arguments a check wrote
+	cmd := exec.Command(p.tmux, append([]string{"-S", p.sock}, args...)...) //nolint:gosec // G204: the program is tmux, as in New, and the arguments are this pane's own socket path and what a method here passed
 	cmd.Env = p.env()
 	return cmd
 }

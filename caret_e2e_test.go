@@ -107,6 +107,8 @@ func startProgramInTmux(tb *testing.T, tmux, binary string, width, height int) *
 	return p
 }
 
+// waitPrompt waits for the placeholder: proof the prompt is on screen and the
+// program is reading the terminal.
 func (p *caretProgram) waitPrompt(timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {

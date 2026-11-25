@@ -226,10 +226,10 @@ func replayInTmuxCapture(t *testing.T, tmux string, width, height int, stream []
 	done := filepath.Join(p.Dir(), "done")
 
 	// Every path in the pane's command is quoted. The command is a shell string
-	// and the paths carry the test's name (t.TempDir() does), so a subtest name
-	// with a space or a parenthesis would otherwise end the command early: the
-	// pane's shell exits, the session ends, the server exits, and this harness
-	// waits out its deadline instead of failing where the mistake is.
+	// and the paths carry the test's name — Pane.Dir is a testing.T.TempDir() — so
+	// a subtest name with a space or a parenthesis would otherwise end the command
+	// early: the pane's shell exits, the done file is never written, and this
+	// harness waits out its deadline instead of failing where the mistake is.
 	cat := "cat " + tmuxpane.Quote(src)
 	if chunk > 0 {
 		cat = fmt.Sprintf("dd if=%s bs=%d 2>/dev/null", tmuxpane.Quote(src), chunk)
