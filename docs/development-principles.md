@@ -275,6 +275,22 @@ first read, **pinned before the window opens**: `currentUmask` reads the umask
 once, and a test that narrowed the umask inside that read latched it for the rest
 of the binary.
 
+### A test reaps what it starts
+
+A cleanup runs on a failure and on a panic, and does not run when the test binary
+is killed — which is how a long run is most often stopped. So the only process a
+test may start and expect to be cleaned up is a **direct child**: when the test
+dies the kernel takes the other end of its terminal away, and a child whose input
+is gone has nothing left to do. A **daemon** is the case that escapes, because it
+leaves its parent's lifetime the moment it detaches. A test that wants one has to
+hold it there itself: `internal/tmuxpane` starts tmux as a child with
+`Pdeathsig`, which is the one mechanism a `kill -9` does not get to skip.
+
+This is not tidiness for its own sake. What a stopped run leaves behind is a
+process nobody can see: the caret check's leftovers were programs still painting
+into panes whose server nobody could reach, four times a second, for as long as the
+machine stayed up.
+
 ### A tool's output order is not a contract either
 
 `-shuffle` reorders *tests*. It cannot find a test that is random inside one run,

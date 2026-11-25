@@ -11,11 +11,13 @@
 // and two copies of a lifetime rule is how a rule comes to disagree with itself;
 // it is written here once.
 //
-// The lifetime rule is the part to know before reading the code: a test's
-// cleanups do not run when the test binary is killed, and a tmux server outlives
-// the process that started it — so the program still running in one of its panes
-// outlives both. New and Close are what keep that from happening; they are the
-// orderly pair, and the reason they are shaped the way they are.
+// The lifetime rule is the part to know before reading the code. Cleanups do not
+// run when the test binary is killed — which is how a long test run is most often
+// stopped — and a tmux server is a daemon: it outlives the process that started
+// it, and the program running in one of its panes outlives both, invisible and
+// ticking forever. So the server here is not a daemon (New): it is a child of the
+// test carrying Pdeathsig, which is the one mechanism that survives the test's own
+// SIGKILL. Close is then the orderly path, not the only one.
 //
 // Linux-only, like both callers: what keeps the server inside the test's lifetime
 // is a Linux facility, and a pane for a check that cannot build here is a pane
@@ -23,13 +25,13 @@
 package tmuxpane
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -43,40 +45,76 @@ type Pane struct {
 	// a reader's own configuration cannot decide what the check starts up
 	// against.
 	dir string
-	// sockDir is TMUX_TMPDIR for every invocation: where the socket file lands.
-	// It is apart from dir because a socket path is length-capped and dir is
-	// testing.T.TempDir(), whose name alone can reach the cap.
-	sockDir string
-	// socket is the server's name, fresh per instance: cases run in sequence and
-	// each kills its server on cleanup, so reusing a name would let a new-session
-	// land on a server that is still exiting.
-	socket string
+	// sock is the server's socket file, handed to tmux with -S. It is short on
+	// purpose — a socket path is capped near 108 bytes, and dir is
+	// testing.T.TempDir(), whose name alone can reach that — and it is in a
+	// directory of the pane's own rather than tmux's default (/tmp/tmux-<uid>),
+	// which collected a file per server that nothing owned.
+	sock string
+	// srv is the server as this process's child; New is why it is a child.
+	srv *exec.Cmd
 	// session is the session's name, set by Session.
 	session string
 
 	closeOnce sync.Once
 }
 
-// New returns a pane of this test's own: a socket name nothing else uses, a
-// directory for its files, and the cleanups that take both away.
+// New starts a tmux server of this test's own: a socket nothing else on the
+// machine uses, a directory for the files a case needs, and the cleanups that take
+// both away.
+//
+// The server is started here, in the one mode that does not daemonize (-D) — see
+// the package comment for why that is the whole point — and with -f /dev/null, so
+// that the reader's own ~/.tmux.conf cannot reach a server that is this check's
+// reference terminal. Whatever a laptop set for its own work (default-terminal,
+// escape-time, remain-on-exit) would otherwise decide what the check measures,
+// which is the same promise the launcher makes for the program.
 func New(t *testing.T, tmux string) *Pane {
 	t.Helper()
-	// The socket file goes in a directory of this pane's own, not tmux's default
-	// (/tmp/tmux-<uid>): killing a server stops it and leaves the file behind, so
-	// the default location collected one per run and nothing owned them.
 	sockDir, err := os.MkdirTemp("", "alaya-pane-")
 	if err != nil {
 		t.Fatalf("making a tmux socket directory: %v", err)
 	}
 	p := &Pane{
-		t:       t,
-		tmux:    tmux,
-		dir:     t.TempDir(),
-		sockDir: sockDir,
-		socket:  fmt.Sprintf("alaya-pane-%d-%d", os.Getpid(), time.Now().UnixNano()),
+		t:    t,
+		tmux: tmux,
+		dir:  t.TempDir(),
+		sock: filepath.Join(sockDir, "sock"),
+	}
+	// -D takes no command, so the session is started separately, by Session.
+	p.srv = exec.Command(p.tmux, "-D", "-S", p.sock, "-f", "/dev/null") //nolint:gosec // G204: the program is tmux, and the arguments are a socket path this package made
+	p.srv.Env = p.env()
+	// SIGKILL, not SIGTERM: the case this covers is a parent that is already gone,
+	// so there is nobody left to be polite to.
+	p.srv.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
+	if err := p.srv.Start(); err != nil {
+		t.Fatalf("starting a tmux server: %v", err)
 	}
 	t.Cleanup(p.Close)
+	p.waitForServer(10 * time.Second)
 	return p
+}
+
+// waitForServer waits until the server answers, so that the first real command
+// does not race it: -D means the socket appears a moment after Start returns, and
+// a client that arrives early fails to connect.
+func (p *Pane) waitForServer(limit time.Duration) {
+	p.t.Helper()
+	deadline := time.Now().Add(limit)
+	for {
+		// list-sessions is answered, with no output, by a server that has none:
+		// the cheapest question only a running server answers.
+		if err := p.command("list-sessions").Run(); err == nil {
+			return
+		}
+		if time.Now().After(deadline) {
+			// A socket path near the 108-byte cap is the usual reason a server
+			// refuses to start at all, so it is named here rather than left to be
+			// rediscovered.
+			p.t.Fatalf("the tmux server never answered on %s (is the socket path too long?)", p.sock)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 // Dir is the directory this pane's files belong in (see Pane.dir).
@@ -169,14 +207,28 @@ func (p *Pane) Paste(text string) {
 func (p *Pane) Close() {
 	p.closeOnce.Do(func() {
 		_ = p.command("kill-server").Run() // already dead when a case failed early
-		_ = os.RemoveAll(p.sockDir)
+		if p.srv != nil && p.srv.Process != nil {
+			// Reap it: it is this process's child, so its exit is ours to collect.
+			// A server that does not answer the kill in time is killed outright —
+			// a teardown that hangs is worse than one that is not tidy, and the
+			// test it runs for is finished either way.
+			done := make(chan struct{})
+			go func() { _ = p.srv.Wait(); close(done) }()
+			select {
+			case <-done:
+			case <-time.After(3 * time.Second):
+				_ = p.srv.Process.Kill()
+			}
+		}
+		_ = os.RemoveAll(filepath.Dir(p.sock))
 	})
 }
 
-// command is one tmux invocation against this pane's server. -L puts the server
-// on a socket of its own; env carries the rest (see Pane.env).
+// command is one tmux invocation against this pane's server. -S is its socket
+// file, which is what makes this server nobody else's; env carries the rest (see
+// Pane.env).
 func (p *Pane) command(args ...string) *exec.Cmd {
-	cmd := exec.Command(p.tmux, append([]string{"-L", p.socket}, args...)...)
+	cmd := exec.Command(p.tmux, append([]string{"-S", p.sock}, args...)...) //nolint:gosec // G204: as in New: tmux, this pane's own socket, and the arguments a check wrote
 	cmd.Env = p.env()
 	return cmd
 }
@@ -184,10 +236,9 @@ func (p *Pane) command(args ...string) *exec.Cmd {
 // env is the environment every tmux invocation of this pane runs with. TMUX and
 // TMUX_PANE are cleared: tmux refuses to start a server from inside a session it
 // thinks it would have to nest in, and these checks run under whatever shell the
-// reader used. TMUX_TMPDIR is where the socket file goes, which is this pane's own
-// directory.
+// reader used.
 func (p *Pane) env() []string {
-	return append(os.Environ(), "TMUX=", "TMUX_PANE=", "TMUX_TMPDIR="+p.sockDir)
+	return append(os.Environ(), "TMUX=", "TMUX_PANE=")
 }
 
 // Quote wraps s in single quotes for a shell command, escaping any single quote
