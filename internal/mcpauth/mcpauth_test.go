@@ -49,15 +49,25 @@ func (s *syncBuffer) String() string {
 }
 
 // fakeCallbackServer is a stub for Flow.startServer that delivers a canned
-// result immediately and records its cleanup on cleanupCh.
+// result and records its cleanup on cleanupCh. gate, when set, withholds that
+// result until the test closes it: a flow held there cannot finish, which is how a
+// test states "this flow is still in flight" instead of hoping the scheduler agrees.
 type fakeCallbackServer struct {
 	cleanupCh chan struct{}
+	gate      chan struct{}
 }
 
 func (f *fakeCallbackServer) start(result platform.CallbackResult) func(string, string, string) (<-chan platform.CallbackResult, string, func()) {
 	return func(_, _, _ string) (<-chan platform.CallbackResult, string, func()) {
 		ch := make(chan platform.CallbackResult, 1)
-		ch <- result
+		if f.gate == nil {
+			ch <- result
+		} else {
+			go func() {
+				<-f.gate
+				ch <- result
+			}()
+		}
 		return ch, "http://127.0.0.1:4242/callback", func() {
 			select {
 			case f.cleanupCh <- struct{}{}:
@@ -77,6 +87,15 @@ type testFlowEnv struct {
 // newTestFlow builds a flow with a capturing printer, a command capture,
 // and a fake callback server. The default unresolved policy is left nil
 // (decline); tests that need the manual path install their own.
+// registered is the run Start registered for a server, read under the flow's
+// lock — the one synchronous place a test can ask "is this the same flow, or a
+// second one?" without waiting for something that may never happen.
+func (e *testFlowEnv) registered(server string) *run {
+	e.flow.mu.Lock()
+	defer e.flow.mu.Unlock()
+	return e.flow.runs[server]
+}
+
 func newTestFlow() *testFlowEnv {
 	out := &syncBuffer{}
 	ci := newSendCapture()
@@ -316,24 +335,38 @@ func TestFlow_TwoServersRunConcurrently(t *testing.T) {
 	}
 }
 
+// TestFlow_IgnoresDuplicateStartForSameServer pins the guard in Start, and its
+// shape is the assertion: the first flow is held inside its callback server,
+// because "already in flight" is the state the guard is about.
+//
+// Calling Start twice in a row does not establish that state. The fake answers
+// immediately, and run deletes the server's entry when the flow ends, so a first
+// flow that finishes between the two calls leaves nothing to suppress — and then a
+// second flow is the program being right. A check written that way measures the
+// scheduler instead: it passed here for years and failed on a loaded runner,
+// reporting a duplicate the program had every reason to allow.
 func TestFlow_IgnoresDuplicateStartForSameServer(t *testing.T) {
 	env := newTestFlow()
+	env.fake.gate = make(chan struct{})
 	env.flow.startServer = env.fake.start(platform.CallbackResult{Code: "code"})
 
 	env.flow.Start("github", "https://g.example/authorize")
-	env.flow.Start("github", "https://g.example/authorize2") // duplicate — ignored
+	inFlight := env.registered("github") // Start registers before it returns
+	if inFlight == nil {
+		t.Fatal("the first Start registered no flow")
+	}
 
+	env.flow.Start("github", "https://g.example/authorize2") // duplicate — ignored
+	if after := env.registered("github"); after != inFlight {
+		t.Error("a duplicate start replaced the in-flight flow: Start must ignore a server that already has one")
+	}
+
+	close(env.fake.gate) // the one flow may finish now
 	got := <-env.ci.ch
 	if got != "mcp_confirm github code http://127.0.0.1:4242/callback" {
 		t.Errorf("command = %q, want github confirm", got)
 	}
 	<-env.fake.cleanupCh
-
-	// Give a wrongly-spawned duplicate a chance to send.
-	time.Sleep(20 * time.Millisecond)
-	if len(env.ci.ch) != 0 {
-		t.Error("duplicate start must not spawn a second flow")
-	}
 }
 
 // TestFlow_SendsConfirmWithIss verifies that the RFC 9207 iss parameter
