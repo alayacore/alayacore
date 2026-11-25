@@ -210,6 +210,29 @@ func TestAgentDoesNotRetryPermanentError(t *testing.T) {
 	}
 }
 
+// The class rule reaches the agent: an unregistered 5xx spends the budget
+// instead of ending the task on its first answer. This is the field's
+// `API error (status 550)` — a code no registry names, from a gateway the
+// message cannot identify, and therefore one no list could have anticipated.
+func TestAgentRetriesUnregisteredServerError(t *testing.T) {
+	fastRetries(t)
+	p := &retryScriptProvider{failures: []error{&APIError{StatusCode: 550}}}
+	agent := NewAgent(AgentConfig{Provider: p, MaxSteps: 3})
+
+	if _, err := agent.Stream(context.Background(), userText(), StreamCallbacks{OnRetry: p.onRetry}); err != nil {
+		t.Fatalf("Stream error = %v, want the retry to recover", err)
+	}
+	if p.calls != 2 {
+		t.Fatalf("provider calls = %d, want 2 (1 + 1 retry)", p.calls)
+	}
+	if len(p.notices) != 1 {
+		t.Fatalf("retry notices = %d, want 1", len(p.notices))
+	}
+	if got := p.notices[0].Reason; got != "provider returned a server error (status 550)" {
+		t.Errorf("notice reason = %q", got)
+	}
+}
+
 // A connection that died before any response is retried like a 5xx. Nothing
 // streamed, so re-sending is safe, and withholding it would only move the same
 // request to the user's own `:continue`.

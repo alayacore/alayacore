@@ -112,17 +112,23 @@ var (
 	retryMaxDelay  = 30 * time.Second
 )
 
-// IsRetryable reports whether err is a transient provider failure that may be
-// safely re-sent. Only a failure raised before anything streamed can be, so a
+// IsRetryable reports whether err is a provider failure that may be safely
+// re-sent. Only a failure raised before anything streamed can be, so a
 // streamCutError — the marker for a step that already delivered content — is
 // refused by name rather than by luck: a cut wrapped in a *url.Error would
 // otherwise pass the transport rule below and duplicate what the user watched.
 //
-// A status is an allowlist, and it has to be: it says what the server decided,
-// and most decisions are final. 501 (Not Implemented) and 505 (HTTP Version Not
-// Supported) are permanent, so retrying them only delays the error, and 400/
-// 401/403/404/413 describe a request the server will reject identically next
-// time. 529 is Anthropic's non-standard "overloaded".
+// A status is decided by its class, and only the exceptions are written down.
+// The class is the server's verdict on the request as a whole (RFC 9110 §15.5),
+// which is the most a status can be trusted to say: 4xx is the request's own
+// fault — an identical request is rejected identically — and 5xx is the server
+// failing to fulfill a valid one, which a retry can change. Within each class the
+// exceptions are the codes that argue the other way: 408, 425 and 429 ask for
+// the request again in so many words, while 501 and 505 are permanent and
+// 525/526 are a TLS misconfiguration no retry turns into a good certificate. An
+// unregistered code is retried as its class's x00, which §15 requires anyway, so
+// a gateway's own 5xx — Cloudflare's 520–524 among them — needs no line here.
+// 529 is Anthropic's non-standard "overloaded".
 //
 // A transport failure carries no decision at all — only the absence of one — so
 // it is decided by the one question that matters: could a second attempt get a
@@ -156,21 +162,24 @@ func IsRetryable(err error) bool {
 	}
 	var apiErr *APIError
 	if errors.As(err, &apiErr) {
+		// 5xx is the server failing to fulfill a valid request, so the class is
+		// the default and only its permanent members are named: a second
+		// identical request meets each of them identically.
+		switch apiErr.StatusCode {
+		case http.StatusNotImplemented, // 501
+			http.StatusHTTPVersionNotSupported, // 505
+			525, 526:                           // TLS misconfiguration
+			return false
+		}
+		if apiErr.StatusCode >= 500 && apiErr.StatusCode < 600 {
+			return true
+		}
+		// 4xx is the request's own fault, so the default is the other way round:
+		// only the codes that themselves say "ask again".
 		switch apiErr.StatusCode {
 		case http.StatusRequestTimeout, // 408
-			http.StatusTooEarly,            // 425 — the server asking to be asked again later
-			http.StatusTooManyRequests,     // 429
-			http.StatusInternalServerError, // 500
-			http.StatusBadGateway,          // 502
-			http.StatusServiceUnavailable,  // 503
-			http.StatusGatewayTimeout,      // 504
-			529:                            // Anthropic "overloaded" (non-standard)
-			return true
-		case 520, 521, 522, 523, 524:
-			// Cloudflare's origin-unreachable family, which a provider behind
-			// that gateway returns where 502/504 would be if the origin could be
-			// reached at all. 525/526 are a TLS misconfiguration and are absent
-			// on purpose: no retry turns a bad certificate into a good one.
+			http.StatusTooEarly,        // 425 — "ask me again later"
+			http.StatusTooManyRequests: // 429
 			return true
 		}
 		return false
@@ -279,7 +288,9 @@ func retryReason(err error) string {
 		case 529:
 			return "provider is overloaded (status 529)"
 		default:
-			return fmt.Sprintf("provider returned a transient error (status %d)", apiErr.StatusCode)
+			// Not "transient": the class rule re-sends codes this program has
+			// never seen, and the status is all we know about them.
+			return fmt.Sprintf("provider returned a server error (status %d)", apiErr.StatusCode)
 		}
 	}
 	// One message for every transport-level failure before the response: they

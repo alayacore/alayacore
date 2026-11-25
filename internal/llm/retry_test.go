@@ -49,6 +49,13 @@ func TestIsRetryable(t *testing.T) {
 		{"524 timeout occurred", &APIError{StatusCode: 524}, true},
 		{"525 ssl handshake failed", &APIError{StatusCode: 525}, false},
 		{"526 invalid certificate", &APIError{StatusCode: 526}, false},
+		// An unregistered code is its class's x00 (RFC 9110 §15), so a gateway's
+		// own 5xx — the field's 550 among them — is re-sent like the 500 it
+		// stands for. Naming codes one at a time is the treadmill the transport
+		// rule below already refused to run on.
+		{"550 unregistered", &APIError{StatusCode: 550}, true},
+		{"599 unregistered", &APIError{StatusCode: 599}, true},
+		{"511 network auth required", &APIError{StatusCode: 511}, true},
 		{"501 permanent", &APIError{StatusCode: 501}, false},
 		{"505 permanent", &APIError{StatusCode: 505}, false},
 		{"400 permanent", &APIError{StatusCode: 400}, false},
@@ -116,7 +123,8 @@ func TestRetryReason(t *testing.T) {
 		{&APIError{StatusCode: 521}, "provider's gateway could not reach the origin (status 521)"},
 		{&APIError{StatusCode: 524}, "provider's gateway could not reach the origin (status 524)"},
 		{&APIError{StatusCode: 529}, "provider is overloaded (status 529)"},
-		{&APIError{StatusCode: 503}, "provider returned a transient error (status 503)"},
+		{&APIError{StatusCode: 503}, "provider returned a server error (status 503)"},
+		{&APIError{StatusCode: 550}, "provider returned a server error (status 550)"},
 		{&url.Error{Op: "Post", URL: "http://x/v1", Err: io.EOF}, "provider connection failed"},
 		{&streamBreakError{err: io.EOF}, "provider stream ended early"},
 		{&streamCutError{err: io.ErrUnexpectedEOF}, "provider stream was cut off"},

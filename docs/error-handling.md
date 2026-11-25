@@ -109,8 +109,8 @@ so adapters treat them consistently (e.g. terseio sets exit code 1):
 ## Automatic Retry of Transient Failures
 
 A provider that is rate-limiting (429), overloaded (529), or briefly unavailable
-(408/500/502/503/504) is retried automatically before the task is allowed to
-fail. So is an attempt that delivered nothing: a connection that failed before any
+(any 5xx) is retried automatically before the task is allowed to fail. So is an
+attempt that delivered nothing: a connection that failed before any
 response (a timeout, a reset, an EOF where the response should have been —
 `Post "...": EOF`, which is what a local server leaves behind when it is killed
 mid-request) and a stream that ended with an error before it recorded anything. A
@@ -164,15 +164,20 @@ duplicate it. It is **resumed** instead — see
 
 **Classification is structural, not a string match.** The provider returns a
 typed `*llm.APIError` (`internal/llm/retry.go`) carrying the HTTP status and the
-parsed `Retry-After` hint; `llm.IsRetryable` decides from those. A status is an
-allowlist and has to be: it is a decision the server made, and most decisions are
-final. In: 408, 425 (the server asking to be asked again later), 429, 500, 502,
-503, 504, 529, and Cloudflare's 520–524 — the codes a gateway in front of the
-provider returns where 502/504 would be if the origin were reachable. Out:
-501/505, which are permanent; 400/401/403/404/413, which describe a request that
-would be rejected identically next time; and 525/526, which are a TLS
-misconfiguration no retry can fix. A `Retry-After` on any of them — 425 is the
-usual carrier — wins over the backoff, so the wait is the server's, not ours.
+parsed `Retry-After` hint; `llm.IsRetryable` decides from those. A status is
+decided by its class, and only the exceptions are written down. 5xx is the server
+failing to fulfill a valid request, so it is re-sent unless the code names a
+permanent condition: 501/505, a decision a retry answers identically, and
+525/526, a TLS misconfiguration no retry turns into a good certificate. That
+covers an unregistered code too — a gateway's own 550 is re-sent as the 500 it
+stands for, which RFC 9110 §15 requires of a client anyway — and it is why
+Cloudflare's 520–524 need no rule of their own. 4xx is the request's own fault and
+is the other way round: re-sent only where the code itself says "ask again" —
+408, 425, 429. The price is the one the transport rule below already names: a 5xx
+that names a permanent condition spends the budget — three notices, about seven
+seconds — instead of failing once, exactly as a wrong port does. A `Retry-After`
+on any of them — 425 is the usual carrier — wins over the backoff, so the wait is
+the server's, not ours.
 
 A transport failure carries no decision at all, so it is decided by the one
 question that matters — could a second attempt get a different answer? — and the
@@ -393,8 +398,8 @@ Automatic retry is tested in `internal/llm/retry_test.go`,
 
 | Test | Verifies |
 |------|----------|
-| `TestIsRetryable` | Every status code in (and out of) the retryable set; a cancel is never retried; a deadline is decided by where it came from — the transport's dial or resolver deadline is re-sent, a bare sentinel is not; a transport failure is retried, including an errno the classifier does not name, while a bad certificate, an https URL answered by plain HTTP, a name that does not resolve and an error that never reached the transport are not |
-| `TestRetryReason` | The user-facing notice text: 425, 429, the gateway family, 529, other statuses, the one wording every connection failure shares, and the two stream failures — ended early (nothing recorded) and was cut off (a cut step being resumed) |
+| `TestIsRetryable` | The class rule on both sides: an unregistered 5xx (550, 599, 511) is re-sent, 501/505/525/526 are not, and 4xx only where the code itself asks again; a cancel is never retried; a deadline is decided by where it came from — the transport's dial or resolver deadline is re-sent, a bare sentinel is not; a transport failure is retried, including an errno the classifier does not name, while a bad certificate, an https URL answered by plain HTTP, a name that does not resolve and an error that never reached the transport are not |
+| `TestRetryReason` | The user-facing notice text: 425, 429, the gateway family, 529, the class's generic wording for an unregistered 5xx, the one wording every connection failure shares, and the two stream failures — ended early (nothing recorded) and was cut off (a cut step being resumed) |
 | `TestRetryDelay` | Exponential backoff, `Retry-After` wins, both capped (no overflow) |
 | `TestAgentRetriesTransientThenSucceeds` | 429 then 503 then success: 3 calls, 2 notices with correct numbering |
 | `TestAgentRetriesConnectionFailure` | `failed to send request: Post "...": EOF`, `readfrom ...: write ...: use of closed network connection` and a dial timeout are all retried and announced as `provider connection failed` |
@@ -416,8 +421,9 @@ Automatic retry is tested in `internal/llm/retry_test.go`,
 | `TestAgentDoesNotResumeAStepThatCompleted` | The same rule where the epilogue would be resumed: no `Continue` after a finished answer, no second request, no notice |
 | `TestAgentRetriesStreamBreakUntilTheBudgetIsSpent` | A stream that keeps dying with the record empty spends the budget and reports the provider's error unchanged |
 | `TestRunTaskResumesACutStream` | The session half: a cut step mid-task is resumed without the user — `Continue` is appended at the boundary, numbered and echoed under the ID the adapter holds, the resume is announced as a notify, and the task ends with no error |
-| `TestAgentRetriesExhausted` | A permanent 429 stops after `1+maxRetries` calls and surfaces the `*APIError` |
+| `TestAgentRetriesExhausted` | A provider that keeps answering 429 stops after `1+maxRetries` calls and surfaces the `*APIError` |
 | `TestAgentDoesNotRetryPermanentError` | A 401 is not retried |
+| `TestAgentRetriesUnregisteredServerError` | A 550 is re-sent like the 500 it stands for: 2 calls, 1 notice, the task recovers, and the notice says `provider returned a server error (status 550)` |
 | `TestAgentRetryCanceledDuringBackoff` | A cancel during the wait stops before the next request (`context.Canceled`) |
 | `TestParseRetryAfter` / `TestDoRequestReturnsTypedAPIError` | Provider parses `Retry-After` (seconds and HTTP-date) and returns a typed `*llm.APIError` |
 | `TestStreamMessagesConnectionClosedBeforeResponseIsRetryable` | A server that closes the connection without responding produces an error `llm.IsRetryable` accepts — over a real socket, not a hand-built error |
