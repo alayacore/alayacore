@@ -59,7 +59,6 @@ package main_test
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -67,6 +66,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alayacore/alayacore/internal/testenv"
 	"github.com/alayacore/alayacore/internal/tmuxpane"
 )
 
@@ -188,16 +188,12 @@ func TestCaretAndTextAgreeAboutTheWindowUnderTmux(t *testing.T) {
 	if testing.Short() {
 		t.Skip("spawns a tmux server and waits on paint timing")
 	}
-	tmux, err := exec.LookPath("tmux")
-	if err != nil {
-		// The disposition screen_tmux_replay_test.go makes: a skip on a developer's
-		// box, a failure in CI, where the workflow installs tmux as the reference
-		// terminal and `go test ./...` runs without -v, so a skip would be invisible.
-		if os.Getenv("CI") != "" {
-			t.Fatalf("tmux is not installed, but the workflow installs it as this test's reference terminal (see .github/workflows/test.yml): %v", err)
-		}
-		t.Skip("tmux is not installed")
-	}
+	// A box without tmux skips this check; `make test` is what refuses to start
+	// without it, so a run that was meant to be complete cannot lose it (see
+	// internal/testenv). Reading CI for that answer is the mistake testenv exists
+	// to prevent: it guesses which workflow is running and is wrong on the one
+	// that declares nothing.
+	tmux := testenv.RequireTool(t, "tmux", "this test's reference terminal")
 	binary := buildProgram(t)
 
 	const width, height = 80, 24
