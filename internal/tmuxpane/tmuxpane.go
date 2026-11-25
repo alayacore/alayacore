@@ -102,25 +102,46 @@ func New(t *testing.T, tmux string) *Pane {
 }
 
 // waitForServer waits until the server answers, so that the first real command
-// does not race it: -D means the socket appears a moment after Start returns, and
-// a client that arrives early fails to connect.
+// does not race it: -D means the socket appears a moment after Start returns, and a
+// client that arrives early fails to connect.
+//
+// Which question to ask is the subtle part, and each of the two obvious ones is
+// wrong for its own reason. new-session starts a server when it cannot find one,
+// and a daemon is exactly what this pane must not end up with. list-sessions asks
+// about *sessions*: a server that has none answers with an error on some builds, so
+// "did it succeed" would be a build's decision rather than this harness's. Global
+// options are answered by any tmux that is up, with a session or without, and asking
+// for them cannot start a server — both measured, on the runner's 3.4 and a
+// development box's 3.7c.
 func (p *Pane) waitForServer(limit time.Duration) {
 	p.t.Helper()
 	deadline := time.Now().Add(limit)
+	var last string
 	for {
-		// list-sessions is answered, with no output, by a server that has none:
-		// the cheapest question only a running server answers.
-		if err := p.command("list-sessions").Run(); err == nil {
+		cmd := p.command("show-options", "-g")
+		var complaint bytes.Buffer
+		cmd.Stderr = &complaint
+		err := cmd.Run()
+		last = strings.TrimSpace(complaint.String())
+		if err == nil {
 			return
 		}
 		if time.Now().After(deadline) {
-			// A socket path near the 108-byte cap is the usual reason a server
-			// refuses to start at all, so it is named here rather than left to be
-			// rediscovered.
-			p.t.Fatalf("the tmux server never answered on %s (is the socket path too long?)", p.sock)
+			p.t.Fatalf("the tmux server never answered on %s (%s): %s", p.sock, p.version(), last)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+// version is the banner of the tmux this check is running, so a failure names the
+// build it failed with — the equality of two tmux builds is not something this
+// harness may assume.
+func (p *Pane) version() string {
+	out, err := exec.Command(p.tmux, "-V").Output() //nolint:gosec // G204: the program is tmux, and it takes one fixed flag
+	if err != nil {
+		return "tmux, version unknown"
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // Dir is the directory this pane's files belong in (see Pane.dir).

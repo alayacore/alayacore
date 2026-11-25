@@ -104,13 +104,16 @@ func startProgram(tb *testing.T, binary string) *tty {
 }
 
 // startProgramWithoutCTTY launches the binary on a pty that is not its controlling
-// terminal: the slave is handed to it as stdin and stdout, which is how a driver
-// that is not a terminal emulator delivers one (pty.spawn, a wrapper, another
-// harness). The difference is one signal. When a master closes, the kernel hangs up
-// the terminal — and a hanging-up terminal sends SIGHUP to the foreground process
-// group of the session it is the controlling terminal of. A check that wants the
-// program to decide for itself cannot use that pty: the kernel would be deciding
-// for it, and the assertion would be about the kernel.
+// terminal. The slave is still its stdin and stdout — the program cannot tell the
+// difference until something hangs the terminal up — but nothing asks for it to be
+// the session's terminal, and that is the only half this file varies (Setctty).
+// The shape is what a driver gives its child when it treats a pty as a pair of
+// descriptors and never calls TIOCSCTTY; what it buys here is the absence of one
+// signal: closing a master hangs the terminal up, and a hung-up terminal sends
+// SIGHUP to the foreground process group of the session it belongs to, which is a
+// session this pty does not have. A check that wants the program to decide for
+// itself cannot use the other pty: the kernel would decide, and the assertion would
+// be about the kernel.
 func startProgramWithoutCTTY(tb *testing.T, binary string) *tty {
 	return startProgramOn(tb, binary, false)
 }
